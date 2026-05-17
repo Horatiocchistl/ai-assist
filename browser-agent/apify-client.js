@@ -97,7 +97,14 @@ export async function apifyFetchProduct(url, token, emit) {
   const startResp = await apifyRequest(
     'POST',
     `/acts/${ACTOR_ID}/runs`,
-    { startUrls: [{ url }], maxItems: 1 },
+    {
+      categoryOrProductUrls: [{ url }],
+      maxItemsPerStartUrl: 1,
+      scrapeProductDetails: true,
+      scrapeProductVariantPrices: false,
+      scrapeSellers: false,
+      proxyCountry: 'AUTO_SELECT_PROXY_COUNTRY',
+    },
     token
   )
 
