@@ -4,6 +4,7 @@ import { getBrowserContext, saveSession } from './browser-session.js'
 import { openPage, extractProductText } from './page-navigator.js'
 import { humanScrollPage, delay } from './human-behavior.js'
 import { captureViewport, captureCarousel, captureAplusModules } from './screenshot-capture.js'
+import { probePage } from './page-probe.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const CAPTURES_ROOT = path.join(__dirname, '..', 'captures')
@@ -60,39 +61,39 @@ export async function runAnalysis(runId, asins, emit, signal) {
     const asinResult = { asin, url, text: null, carousel: [], aplus: [] }
 
     try {
-      // Step 1: Extract title and bullets from DOM
+      // Step 1: Probe the page — log every selector result before touching anything
+      emit({ type: 'log', level: 'info', msg: `${logPrefix} — probing page structure` })
+      await probePage(page, emit)
+
+      // Step 2: Extract title and bullets from DOM
       emit({ type: 'log', level: 'info', msg: `${logPrefix} — extracting title & bullets` })
       asinResult.text = await extractProductText(page)
       if (asinResult.text?.title) {
-        emit({ type: 'log', level: 'info', msg: `${logPrefix} — title: "${asinResult.text.title.slice(0, 80)}…"` })
+        emit({ type: 'log', level: 'info', msg: `${logPrefix} — title: "${asinResult.text.title.slice(0, 100)}"` })
       }
+      emit({ type: 'log', level: 'info', msg: `${logPrefix} — ${asinResult.text?.bullets?.length ?? 0} bullet(s) extracted` })
 
-      // Step 2: Capture the initial hero viewport (above the fold)
+      // Step 3: Capture the initial hero viewport (above the fold)
       const heroPath = path.join(outputDir, 'hero_viewport.png')
-      await captureViewport(page, heroPath)
+      await captureViewport(page, heroPath, emit)
       emit({ type: 'screenshot', asin, section: 'hero_viewport', path: heroPath })
 
-      // Step 3: Click through the image carousel — all thumbnails
+      // Step 4: Click through the image carousel — all thumbnails
       emit({ type: 'log', level: 'info', msg: `${logPrefix} — starting carousel capture` })
-      asinResult.carousel = await captureCarousel(
-        page,
-        outputDir,
-        (msg) => emit({ type: 'log', level: 'info', msg: `${logPrefix} — ${msg}` })
-      )
+      asinResult.carousel = await captureCarousel(page, outputDir, emit)
       emit({ type: 'log', level: 'info', msg: `${logPrefix} — captured ${asinResult.carousel.length} carousel image(s)` })
 
-      // Step 4: Human-pace scroll through the full page
+      // Step 5: Human-pace scroll through the full page
       emit({ type: 'log', level: 'info', msg: `${logPrefix} — scrolling page` })
       let scrollCaptures = 0
       await humanScrollPage(
         page,
         async (scrollY, pageHeight) => {
-          // Capture viewport at ~25%, 50%, 75% scroll depth
           const pct = scrollY / pageHeight
           if ([0.25, 0.5, 0.75].some(t => Math.abs(pct - t) < 0.04)) {
             const pctLabel = Math.round(pct * 100)
             const scrollPath = path.join(outputDir, `scroll_${pctLabel}pct.png`)
-            await captureViewport(page, scrollPath)
+            await captureViewport(page, scrollPath, emit)
             scrollCaptures++
           }
         },
@@ -100,13 +101,9 @@ export async function runAnalysis(runId, asins, emit, signal) {
       )
       emit({ type: 'log', level: 'info', msg: `${logPrefix} — scroll complete (${scrollCaptures} viewport captures)` })
 
-      // Step 5: Capture A+ content modules
+      // Step 6: Capture A+ content modules
       emit({ type: 'log', level: 'info', msg: `${logPrefix} — capturing A+ content` })
-      asinResult.aplus = await captureAplusModules(
-        page,
-        outputDir,
-        (msg) => emit({ type: 'log', level: 'info', msg: `${logPrefix} — ${msg}` })
-      )
+      asinResult.aplus = await captureAplusModules(page, outputDir, emit)
       emit({ type: 'log', level: 'info', msg: `${logPrefix} — captured ${asinResult.aplus.length} A+ module(s)` })
 
       asinResult.status = 'captured'
