@@ -83,6 +83,17 @@ export async function captureCarousel(page, outputDir, emit) {
 
   emit?.({ type: 'log', level: 'info', msg: `CAROUSEL — using "${thumbSelector}", ${thumbCount} thumbnail(s) to click through` })
 
+  // Get the main image bounding box ONCE while it is stable and visible.
+  // All carousel screenshots use page.screenshot({ clip }) — never elementHandle.screenshot()
+  // which internally calls scrollIntoViewIfNeeded and times out during Amazon's image swap.
+  const mainImageClip = await page.evaluate(() => {
+    const el = document.querySelector('#landingImage, #imgBlkFront')
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return { x: Math.floor(r.x), y: Math.floor(r.y), width: Math.ceil(r.width), height: Math.ceil(r.height) }
+  })
+  emit?.({ type: 'log', level: 'info', msg: `CAROUSEL — main image clip region: ${JSON.stringify(mainImageClip)}` })
+
   for (let i = 0; i < thumbCount; i++) {
     await delay(800, 1600)
 
@@ -94,46 +105,50 @@ export async function captureCarousel(page, outputDir, emit) {
     }
 
     const thumbSrc = await thumb.$eval('img', img => img.src).catch(() => null)
+    const prevSrc = await page.$eval('#landingImage, #imgBlkFront', img => img.src).catch(() => null)
+
     emit?.({ type: 'log', level: 'info', msg: `CAROUSEL — clicking thumb ${i + 1}/${thumbCount} src="${thumbSrc?.slice(0, 80)}"` })
 
     const box = await thumb.boundingBox()
     if (box) {
       await moveMouseTo(page, box.x + box.width / 2, box.y + box.height / 2, 15)
-      await delay(200, 500)
-    } else {
-      emit?.({ type: 'log', level: 'warn', msg: `CAROUSEL — thumb[${i}] has no bounding box` })
+      await delay(200, 400)
     }
 
     await thumb.click()
-    await delay(1200, 2400)
-    await waitForViewportImages(page, 6000)
 
-    // Log what src the main image swapped to
-    const mainSrc = await page.$eval(
-      '#landingImage, #imgBlkFront',
-      img => img.src
-    ).catch(() => null)
-    emit?.({ type: 'log', level: 'info', msg: `CAROUSEL — main image after click: "${mainSrc?.slice(0, 100)}"` })
+    // Wait for the main image src to actually change — up to 5s
+    try {
+      await page.waitForFunction(
+        (prev) => {
+          const el = document.querySelector('#landingImage, #imgBlkFront')
+          return el && el.src !== prev
+        },
+        prevSrc,
+        { timeout: 5000 }
+      )
+    } catch {
+      emit?.({ type: 'log', level: 'warn', msg: `CAROUSEL — src did not change after clicking thumb ${i + 1} (may be first image or slow load)` })
+    }
+
+    await delay(800, 1500)
+    await waitForViewportImages(page, 5000)
+
+    const newSrc = await page.$eval('#landingImage, #imgBlkFront', img => img.src).catch(() => null)
+    emit?.({ type: 'log', level: 'info', msg: `CAROUSEL — main image src after click: "${newSrc?.slice(0, 100)}"` })
 
     const label = String(i + 1).padStart(2, '0')
     const imagePath = path.join(outputDir, `carousel_${label}.png`)
 
-    // Do NOT call scrollIntoViewIfNeeded here — #landingImage briefly becomes
-    // invisible while Amazon swaps the image src, causing a 30s timeout.
-    // We are already at the top of the page; just screenshot the element directly.
     try {
-      const mainEl = await page.$('#landingImage, #imgBlkFront')
-      if (mainEl) {
-        await fs.mkdir(outputDir, { recursive: true })
-        await mainEl.screenshot({ path: imagePath, type: 'png' })
-        const kb = await fileSizeKb(imagePath)
-        emit?.({ type: 'log', level: 'info', msg: `  screenshot saved: ${path.basename(imagePath)} (${kb}KB)` })
-        captures.push({ index: i + 1, thumbSrc, imagePath })
-      } else {
-        emit?.({ type: 'log', level: 'warn', msg: `CAROUSEL — main image element not found after click ${i + 1}` })
-      }
+      await fs.mkdir(outputDir, { recursive: true })
+      const clip = mainImageClip || undefined
+      await page.screenshot({ path: imagePath, type: 'png', clip })
+      const kb = await fileSizeKb(imagePath)
+      emit?.({ type: 'log', level: 'info', msg: `  screenshot saved: ${path.basename(imagePath)} (${kb}KB)` })
+      captures.push({ index: i + 1, thumbSrc, imagePath })
     } catch (err) {
-      emit?.({ type: 'log', level: 'error', msg: `CAROUSEL — screenshot failed on image ${i + 1}: ${err.message}` })
+      emit?.({ type: 'log', level: 'error', msg: `CAROUSEL — page screenshot failed on image ${i + 1}: ${err.message}` })
     }
   }
 
