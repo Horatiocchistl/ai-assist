@@ -1,0 +1,37 @@
+---
+description: After UI/code changes, stop the server and rebuild/restart the Electron app
+alwaysApply: true
+---
+
+# Restart app after changes
+
+When you **finish implementing or fixing** frontend, Electron, or `server.js` changes the user should verify in the running app:
+
+1. **Stop** existing processes before starting a new one:
+   ```bash
+   lsof -ti:3001,5173 2>/dev/null | xargs kill -9 2>/dev/null
+   pkill -f "electron.*CascadeProjects/ai-assist" 2>/dev/null
+   pkill -f "node.*ai-assist.*server" 2>/dev/null
+   sleep 1
+   ```
+
+2. **Rebuild and run** from the project root:
+   ```bash
+   cd /Users/ronalddeanstrawbridge/CascadeProjects/ai-assist && npm run electron:dev
+   ```
+   (`electron:dev` runs `vite build` then launches Electron with Express on port 3001.)
+
+3. **Confirm** startup — wait until logs show Express on port 3001 before telling the user to check the UI.
+
+## When this applies
+
+- After edits the user is meant to see in the desktop app (React components, styles, `App.jsx`, Electron main/preload, `server.js`).
+- When the user asks to run, restart, or refresh the app.
+
+## When to skip
+
+- Explain-only answers with **no code changes**.
+- User explicitly says not to restart.
+- Pure docs or plan-only work.
+
+Do **not** assume a hot reload is enough — this project serves the built `dist/` bundle through Electron; **rebuild + restart** is required for UI changes to show.

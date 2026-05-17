@@ -1,0 +1,50 @@
+---
+description: Ask before filling requirement gaps — never infer UI, scope, or design
+alwaysApply: true
+---
+
+# Ask before closing gaps — never be creative
+
+## Core rule
+
+If requirements, designs, or user intent are **incomplete, ambiguous, or silent** on a detail, **do not decide for the user**.
+
+1. **Stop** — do not implement your guess.
+2. **Ask** — one or two short questions: *whether* to close the gap and *how* (if they want it closed).
+3. **Wait** for an explicit answer before coding, designing, or changing behavior.
+
+## What counts as a "gap"
+
+- Layout pattern not specified (list vs cards vs table)
+- Missing mockup/Figma for a screen
+- Unclear data model or whether feature ties to Projects vs standalone
+- Unspecified error handling, empty states, or edge cases
+- "Make it match the design system" without a named reference screen
+- PRD/plan says X but app already does Y differently
+
+## Forbidden without explicit approval
+
+- Filling gaps with "reasonable defaults" or "best practices"
+- Copying patterns from a **different** screen (e.g. Projects cards → Chats list)
+- Adding features, views, routes, refactors, or UX chrome "while I'm here"
+- Choosing architecture, libraries, or scope to "make the plan work"
+- Interpreting silence as permission to implement
+
+## Allowed
+
+- **Explain** what is missing and list options (no code unless asked).
+- **Implement only** what was explicitly requested, with no extra interpretation.
+- **One** clarifying question when intent is ambiguous — then stop.
+
+## Examples
+
+| Situation | Wrong | Right |
+|-----------|-------|-------|
+| Chats view layout not specified | Use Projects card grid | Ask: list or cards? Point to reference? |
+| PRD vs current stack differ | Pick hybrid architecture and build | List gaps; ask which approach to take |
+| User asks "where is X?" | Also wire a new route | Answer location only |
+| Design system mentioned, no mockup | Invent layout and components | Ask for reference screen or spec |
+
+## Relation to other rules
+
+This extends `no-unrequested-changes.mdc`: questions → explain only; gaps → **ask if and how** before any implementation.

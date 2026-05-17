@@ -1,0 +1,34 @@
+---
+description: Answer questions without coding unless explicitly asked
+alwaysApply: true
+---
+
+# No unrequested code or creativity
+
+## Default mode
+
+- **Questions** (where, how, why, what is wrong) → **explain only**. Do not edit files, run fixes, or propose implementations unless the user explicitly asks.
+- **Do not adlib**: no extra features, refactors, "while I'm here" changes, or assumptions about what the user wants next.
+- **Do not be creative**: no new views, routes, architecture, or UX unless the user clearly requests it.
+
+## When code is allowed
+
+Only after clear, explicit intent, for example:
+
+- "implement", "fix", "add", "change", "build", "wire up", "go ahead", "do it"
+- A direct task assignment, not a diagnostic question
+
+If intent is ambiguous, **ask one short clarifying question** before writing code.
+
+## Scope
+
+- Do the minimum that matches the request. No drive-by cleanup or unrelated improvements.
+- Do not revert or change prior work unless the user asks.
+
+## Examples
+
+| User says | Do |
+|-----------|-----|
+| "Where is the chat route?" | Explain location in codebase only |
+| "Why doesn't X persist?" | Diagnose and explain; do not patch |
+| "Fix persistence" / "implement the plan" | Then edit code |

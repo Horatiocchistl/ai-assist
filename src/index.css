@@ -1,0 +1,180 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #E4EBE6;
+  --bg-secondary: #E4EBE6;
+  --bg-panel: #E4EBE6;
+  --border: #B6BFB8;
+  --text-primary: #101411;
+  --text-secondary: #232925;
+  --text-muted: #909692;
+  --accent: #0FBF3E;
+  --think-bg: #F2F5F3;
+  --think-border: #B6BFB8;
+  --think-text: #232925;
+  --bg-center: #F2F5F3;
+  --user-bubble-bg: #F5E6C0;
+  --user-bubble-border: #E8D49A;
+  --input-bg: #FFFDF7;
+  --stop-bg: #FFF0D0;
+  --stop-border: #E8C08A;
+  --stop-color: #C07820;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #222222;
+  --bg-panel: #1e1e1e;
+  --border: #3a3a3a;
+  --text-primary: #e8e8e8;
+  --text-secondary: #c0c0c0;
+  --text-muted: #707070;
+  --accent: #0FBF3E;
+  --think-bg: #252525;
+  --think-border: #3a3a3a;
+  --think-text: #c0c0c0;
+  --bg-center: #1a1a1a;
+  --user-bubble-bg: #2a3a2a;
+  --user-bubble-border: #3a4a3a;
+  --input-bg: #252525;
+  --stop-bg: #3a2e1a;
+  --stop-border: #5a4420;
+  --stop-color: #e0a040;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Mona Sans', 'Inter', system-ui, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+.prose {
+  max-width: none;
+}
+
+.prose p { margin-bottom: 0.75rem; }
+.prose p:last-child { margin-bottom: 0; }
+.prose ul, .prose ol { margin: 0.5rem 0 0.75rem 1.25rem; }
+.prose li { margin-bottom: 0.2rem; }
+.prose code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+  background: var(--bg-secondary);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+.prose pre {
+  background: #2D2416;
+  color: #F5E8C8;
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+.prose pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+}
+.prose h1, .prose h2, .prose h3 {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 1rem 0 0.5rem;
+}
+.prose blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 1rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.think-block {
+  background: var(--think-bg);
+  border: 1px solid var(--think-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  font-style: italic;
+  color: var(--think-text);
+  font-size: 0.88em;
+  line-height: 1.6;
+}
+
+.think-block summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--think-text);
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.think-block summary::-webkit-details-marker { display: none; }
+
+.think-block summary::before {
+  content: '▶';
+  font-size: 0.7em;
+  transition: transform 0.2s;
+}
+
+.think-block[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.think-content {
+  margin-top: 0.5rem;
+  white-space: pre-wrap;
+}
+
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.resize-handle:hover,
+.resize-handle.dragging {
+  background: var(--accent);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
