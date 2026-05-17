@@ -68,7 +68,12 @@ export async function extractProductText(page) {
   return page.evaluate(() => {
     const title = document.querySelector('#productTitle')?.innerText?.trim() || null
 
-    const bulletEls = document.querySelectorAll('#feature-bullets ul li span.a-list-item')
+    // Scope to the FIRST #feature-bullets only — page may contain bullets from
+    // sponsored/related products further down that share the same selector
+    const featureBlock = document.querySelector('#feature-bullets, #featurebullets_feature_div')
+    const bulletEls = featureBlock
+      ? featureBlock.querySelectorAll('ul li span.a-list-item')
+      : []
     const bullets = Array.from(bulletEls)
       .map(el => el.innerText.trim())
       .filter(t => t.length > 0)

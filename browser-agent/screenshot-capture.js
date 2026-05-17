@@ -117,8 +117,24 @@ export async function captureCarousel(page, outputDir, emit) {
 
     const label = String(i + 1).padStart(2, '0')
     const imagePath = path.join(outputDir, `carousel_${label}.png`)
-    const result = await captureElement(page, '#landingImage, #imgBlkFront', imagePath, emit)
-    if (result) captures.push({ index: i + 1, thumbSrc, imagePath: result })
+
+    // Do NOT call scrollIntoViewIfNeeded here — #landingImage briefly becomes
+    // invisible while Amazon swaps the image src, causing a 30s timeout.
+    // We are already at the top of the page; just screenshot the element directly.
+    try {
+      const mainEl = await page.$('#landingImage, #imgBlkFront')
+      if (mainEl) {
+        await fs.mkdir(outputDir, { recursive: true })
+        await mainEl.screenshot({ path: imagePath, type: 'png' })
+        const kb = await fileSizeKb(imagePath)
+        emit?.({ type: 'log', level: 'info', msg: `  screenshot saved: ${path.basename(imagePath)} (${kb}KB)` })
+        captures.push({ index: i + 1, thumbSrc, imagePath })
+      } else {
+        emit?.({ type: 'log', level: 'warn', msg: `CAROUSEL — main image element not found after click ${i + 1}` })
+      }
+    } catch (err) {
+      emit?.({ type: 'log', level: 'error', msg: `CAROUSEL — screenshot failed on image ${i + 1}: ${err.message}` })
+    }
   }
 
   emit?.({ type: 'log', level: 'info', msg: `CAROUSEL — done, ${captures.length} image(s) captured` })
