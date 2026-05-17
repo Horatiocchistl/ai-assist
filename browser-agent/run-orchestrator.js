@@ -86,12 +86,15 @@ export async function runAnalysis(runId, asins, emit, signal) {
       // Step 5: Human-pace scroll through the full page
       emit({ type: 'log', level: 'info', msg: `${logPrefix} — scrolling page` })
       let scrollCaptures = 0
+      const capturedScrollMilestones = new Set()
       await humanScrollPage(
         page,
         async (scrollY, pageHeight) => {
           const pct = scrollY / pageHeight
-          if ([0.25, 0.5, 0.75].some(t => Math.abs(pct - t) < 0.04)) {
-            const pctLabel = Math.round(pct * 100)
+          const hit = [0.25, 0.5, 0.75].find(t => Math.abs(pct - t) < 0.04)
+          if (hit && !capturedScrollMilestones.has(hit)) {
+            capturedScrollMilestones.add(hit)
+            const pctLabel = Math.round(hit * 100)
             const scrollPath = path.join(outputDir, `scroll_${pctLabel}pct.png`)
             await captureViewport(page, scrollPath, emit)
             scrollCaptures++
