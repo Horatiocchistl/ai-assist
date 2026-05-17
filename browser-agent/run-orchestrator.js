@@ -71,7 +71,15 @@ export async function runAnalysis(runId, asins, emit, signal) {
       if (asinResult.text?.title) {
         emit({ type: 'log', level: 'info', msg: `${logPrefix} — title: "${asinResult.text.title.slice(0, 100)}"` })
       }
-      emit({ type: 'log', level: 'info', msg: `${logPrefix} — ${asinResult.text?.bullets?.length ?? 0} bullet(s) extracted` })
+      const overview = asinResult.text?.overview ?? []
+      if (overview.length > 0) {
+        emit({ type: 'log', level: 'info', msg: `${logPrefix} — overview specs (${overview.length}): ${overview.join(' | ')}` })
+      }
+      const bullets = asinResult.text?.bullets ?? []
+      emit({ type: 'log', level: 'info', msg: `${logPrefix} — ${bullets.length} bullet(s) extracted` })
+      bullets.slice(0, 3).forEach((b, i) => {
+        emit({ type: 'log', level: 'info', msg: `  bullet ${i + 1}: "${b.slice(0, 120)}"` })
+      })
       const accordions = asinResult.text?.accordionSections ?? []
       if (accordions.length > 0) {
         emit({ type: 'log', level: 'info', msg: `${logPrefix} — ${accordions.length} accordion section(s): ${accordions.map(s => `"${s.heading}" (${s.items.length})`).join(', ')}` })
