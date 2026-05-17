@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Trash2, ExternalLink, AlertCircle } from 'lucide-react'
+import { Plus, Trash2, ExternalLink, AlertCircle, CheckCircle, Loader } from 'lucide-react'
 
 function extractAsin(input) {
   const trimmed = input.trim()
@@ -13,7 +13,14 @@ function extractAsin(input) {
   return null
 }
 
-export default function AsinManager({ asins, onAdd, onRemove }) {
+function AsinStatusIcon({ status }) {
+  if (status === 'complete') return <CheckCircle size={11} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+  if (status === 'running')  return <Loader size={11} style={{ color: '#e0a040', flexShrink: 0 }} />
+  if (status === 'error' || status === 'blocked') return <AlertCircle size={11} style={{ color: '#c05820', flexShrink: 0 }} />
+  return null
+}
+
+export default function AsinManager({ asins, onAdd, onRemove, progress = {}, disabled = false }) {
   const [input, setInput] = useState('')
   const [error, setError] = useState('')
 
@@ -120,6 +127,7 @@ export default function AsinManager({ asins, onAdd, onRemove }) {
             <span style={{ fontSize: '0.72em', color: 'var(--text-muted)', fontWeight: 600, minWidth: 18 }}>
               {i + 1}
             </span>
+            <AsinStatusIcon status={progress[item.asin]?.status} />
             <span style={{ flex: 1, fontSize: '0.8em', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.asin}
             </span>
@@ -133,7 +141,8 @@ export default function AsinManager({ asins, onAdd, onRemove }) {
               <ExternalLink size={11} />
             </a>
             <button
-              onClick={() => onRemove(item.asin)}
+              onClick={() => !disabled && onRemove(item.asin)}
+              disabled={disabled}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', padding: 2 }}
             >
               <Trash2 size={11} />

@@ -9,3 +9,6 @@ reports/*.input.md
 !reports/.gitkeep
 .DS_Store
 supabase/.temp/
+captures/*
+!captures/.gitkeep
+.amazon-session.json

@@ -681,6 +681,141 @@ app.get('/api/models', async (req, res) => {
   }
 })
 
+// ─── Gap Analyzer ─────────────────────────────────────────────────────────────
+
+// In-memory run registry — single-consultant tool, one run at a time
+const gapRuns = new Map() // runId -> { status, asins, logs, listeners, abortController }
+
+function gapRunId() {
+  return `gap_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
+}
+
+function createRun(asins) {
+  const runId = gapRunId()
+  const run = {
+    runId,
+    status: 'running',
+    asins,
+    logs: [],
+    listeners: new Set(),
+    abortController: new AbortController(),
+  }
+  gapRuns.set(runId, run)
+  return run
+}
+
+function emitToRun(run, event) {
+  const line = `data: ${JSON.stringify(event)}\n\n`
+  run.logs.push(event)
+  for (const res of run.listeners) {
+    try { res.write(line) } catch { /* client disconnected */ }
+  }
+}
+
+// POST /api/gap-analyzer/run  — start a new run
+app.post('/api/gap-analyzer/run', async (req, res) => {
+  const { asins } = req.body
+  if (!Array.isArray(asins) || asins.length === 0) {
+    return res.status(400).json({ error: 'asins array required' })
+  }
+  if (asins.length > 50) {
+    return res.status(400).json({ error: 'Maximum 50 ASINs per run' })
+  }
+
+  // Stop any currently active run first
+  for (const [, existing] of gapRuns) {
+    if (existing.status === 'running') {
+      existing.abortController.abort()
+      existing.status = 'stopped'
+    }
+  }
+
+  const run = createRun(asins)
+
+  // Import and start the orchestrator asynchronously — don't await
+  ;(async () => {
+    try {
+      const { runAnalysis } = await import('./browser-agent/run-orchestrator.js')
+      await runAnalysis(
+        run.runId,
+        asins,
+        (event) => emitToRun(run, event),
+        run.abortController.signal
+      )
+      run.status = 'complete'
+    } catch (err) {
+      emitToRun(run, { type: 'log', level: 'error', msg: `Fatal run error: ${err.message}` })
+      run.status = 'error'
+    } finally {
+      emitToRun(run, { type: 'run_status', status: run.status })
+      // Close all SSE connections
+      for (const res of run.listeners) {
+        try { res.end() } catch { /* already closed */ }
+      }
+      run.listeners.clear()
+    }
+  })()
+
+  res.json({ runId: run.runId })
+})
+
+// GET /api/gap-analyzer/run/:runId/stream  — SSE event stream
+app.get('/api/gap-analyzer/run/:runId/stream', (req, res) => {
+  const run = gapRuns.get(req.params.runId)
+  if (!run) return res.status(404).json({ error: 'Run not found' })
+
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+
+  // Replay all events logged so far (client may connect after run starts)
+  for (const event of run.logs) {
+    res.write(`data: ${JSON.stringify(event)}\n\n`)
+  }
+
+  // If run already finished, close immediately
+  if (run.status !== 'running') {
+    res.write(`data: ${JSON.stringify({ type: 'run_status', status: run.status })}\n\n`)
+    res.end()
+    return
+  }
+
+  run.listeners.add(res)
+
+  req.on('close', () => {
+    run.listeners.delete(res)
+  })
+})
+
+// POST /api/gap-analyzer/run/:runId/stop  — abort a running run
+app.post('/api/gap-analyzer/run/:runId/stop', (req, res) => {
+  const run = gapRuns.get(req.params.runId)
+  if (!run) return res.status(404).json({ error: 'Run not found' })
+  if (run.status !== 'running') return res.json({ status: run.status })
+
+  run.abortController.abort()
+  run.status = 'stopped'
+  emitToRun(run, { type: 'log', level: 'warn', msg: 'Run stopped by user' })
+  emitToRun(run, { type: 'run_status', status: 'stopped' })
+
+  res.json({ status: 'stopped' })
+})
+
+// GET /api/gap-analyzer/captures/:runId/:asin/:filename  — serve captured screenshots
+app.get('/api/gap-analyzer/captures/:runId/:asin/:filename', (req, res) => {
+  const { runId, asin, filename } = req.params
+  // Path traversal guard
+  if ([runId, asin, filename].some(p => p.includes('..') || p.includes('/'))) {
+    return res.status(400).json({ error: 'Invalid path' })
+  }
+  const filePath = path.join(__dirname, 'captures', runId, asin, filename)
+  if (!fs.existsSync(filePath)) return res.status(404).end()
+  res.sendFile(filePath)
+})
+
+// ─── End Gap Analyzer ──────────────────────────────────────────────────────────
+
 // Catch-all: serve index.html for client-side routing (production)
 if (fs.existsSync(distPath)) {
   app.get('*', (req, res) => {
