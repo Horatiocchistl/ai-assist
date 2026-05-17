@@ -7,6 +7,7 @@ import {
   FolderCog,
   PanelLeft,
   PanelLeftClose,
+  ScanSearch,
 } from 'lucide-react'
 import ConfirmModal from './ConfirmModal.jsx'
 
@@ -231,11 +232,13 @@ export default function Sidebar({
   onSelectProject,
   onViewProjects,
   onViewChats,
+  onViewGapAnalyzer,
   onNewProject,
   onNewConv,
   onDeleteConv,
   onRenameConv,
   onOpenSkillDirs,
+  activeView,
 }) {
   const [section, setSection] = useState('chats')
   const [confirmDelete, setConfirmDelete] = useState(null)
@@ -261,6 +264,11 @@ export default function Sidebar({
   function goProjects() {
     setSection('projects')
     onViewProjects()
+  }
+
+  function goGapAnalyzer() {
+    setSection('gapAnalyzer')
+    onViewGapAnalyzer?.()
   }
 
   function handleNewChat() {
@@ -290,6 +298,13 @@ export default function Sidebar({
               onClick={goProjects}
             >
               <FolderOpen size={18} />
+            </CollapsedIconButton>
+            <CollapsedIconButton
+              active={section === 'gapAnalyzer'}
+              title="Gap Analyzer"
+              onClick={goGapAnalyzer}
+            >
+              <ScanSearch size={18} />
             </CollapsedIconButton>
           </div>
           <div style={{ paddingBottom: '0.5rem', display: 'flex', justifyContent: 'center' }}>
@@ -333,6 +348,10 @@ export default function Sidebar({
             <FolderOpen size={14} />
             <span>Projects</span>
           </div>
+          <div style={s.row(section === 'gapAnalyzer')} onClick={goGapAnalyzer}>
+            <ScanSearch size={14} />
+            <span>Gap Analyzer</span>
+          </div>
         </div>
 
         <div style={s.scroll}>
@@ -357,6 +376,12 @@ export default function Sidebar({
                 </div>
               )}
             </>
+          )}
+
+          {section === 'gapAnalyzer' && (
+            <div style={s.section}>
+              <span style={s.sectionLabel}>Gap Analyzer</span>
+            </div>
           )}
 
           {section === 'projects' && (

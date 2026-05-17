@@ -11,6 +11,7 @@ import { ALL_TOOLS, SKILL_TOOLS } from './lib/tools.js'
 import SkillDirsModal from './components/SkillDirsModal.jsx'
 import ReportPreviewPanel from './components/ReportPreviewPanel.jsx'
 import ChatsView from './components/ChatsView.jsx'
+import GapAnalyzerView from './components/gap-analyzer/GapAnalyzerView.jsx'
 
 const DEFAULT_MODEL = 'ministral-3:14b'
 const REGULAR_SYSTEM_PROMPT = `You are a helpful AI assistant. Respond concisely and accurately.
@@ -86,7 +87,7 @@ export default function App() {
 
   const [streamingMessage, setStreamingMessage] = useState(null)
   const [model] = useState(DEFAULT_MODEL)
-  const [view, setView] = useState('chat') // 'chat' | 'chatsList' | 'projects' | 'projectDetail'
+  const [view, setView] = useState('chat') // 'chat' | 'chatsList' | 'projects' | 'projectDetail' | 'gapAnalyzer'
   const [showCreateProject, setShowCreateProject] = useState(false)
   const [startEditing, setStartEditing] = useState(false)
   const [sidebarExpanded, setSidebarExpanded] = useState(() => {
@@ -314,6 +315,10 @@ export default function App() {
     setView('projects')
   }, [createProject, setProjectInstructions, addKnowledge])
 
+  const handleViewGapAnalyzer = useCallback(() => {
+    setView('gapAnalyzer')
+  }, [])
+
   const handleProjectDetailBack = useCallback(() => {
     setView('projects')
   }, [])
@@ -342,6 +347,8 @@ export default function App() {
         onSelectProject={handleSelectProjectCard}
         onViewProjects={handleViewProjects}
         onViewChats={handleViewChats}
+        onViewGapAnalyzer={handleViewGapAnalyzer}
+        activeView={view}
         onNewProject={() => setShowCreateProject(true)}
         onNewConv={handleNewConv}
         onDeleteConv={deleteConversation}
@@ -363,6 +370,12 @@ export default function App() {
             onMoveConversations={moveConversationsToProject}
             onDeleteConversations={deleteConversations}
           />
+        </div>
+      )}
+
+      {view === 'gapAnalyzer' && (
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <GapAnalyzerView />
         </div>
       )}
 
