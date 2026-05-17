@@ -654,7 +654,7 @@ app.get('/api/fetch-url', async (req, res) => {
   if (!url) return res.status(400).json({ error: 'url parameter required' })
   try {
     const response = await fetch(url, {
-      headers: { 'User-Agent': 'ComputerUI/1.0' },
+      headers: { 'User-Agent': 'AI-Assist-v1/1.0' },
       signal: AbortSignal.timeout(10000),
     })
     const html = await response.text()
@@ -690,5 +690,5 @@ if (fs.existsSync(distPath)) {
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`ComputerUI server running on :${PORT}`)
+  console.log(`AI Assist v1 server running on :${PORT}`)
 })

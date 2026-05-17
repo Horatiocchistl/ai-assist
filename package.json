@@ -1,5 +1,5 @@
 {
-  "name": "computerui",
+  "name": "ai-assist",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,8 +15,8 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "build": {
-    "appId": "com.computerui.app",
-    "productName": "ComputerUI",
+    "appId": "com.aiassist.v1",
+    "productName": "AI Assist v1",
     "files": [
       "dist/**/*",
       "server.js",

@@ -1,4 +1,4 @@
-# ComputerUI (ai-assist)
+# AI Assist v1
 
 Local-first AI desktop assistant for macOS: **Electron + React** UI, **Ollama** for inference, **Express** for skills and tools, **Supabase** for projects, conversations, and RAG knowledge.
 
@@ -8,7 +8,7 @@ Repository: [github.com/Horatiocchistl/ai-assist](https://github.com/Horatiocchi
 
 ## What this project is
 
-ComputerUI is a consultant-style workspace: chat with a local model, organize work in **projects** (instructions + file knowledge + scoped chats), run **skills** from configurable folders, and save **markdown report drafts** with preview and export.
+**AI Assist v1** is a consultant-style workspace: chat with a local model, organize work in **projects** (instructions + file knowledge + scoped chats), run **skills** from configurable folders, and save **markdown report drafts** with preview and export.
 
 A planned **CPG (Consumer Packaged Goods)** module—Amazon product-page gap analysis against planned assets—is documented in [`amazon-gap-analyzer-plan.md`](amazon-gap-analyzer-plan.md). That work is **not implemented yet**; the current app delivers the foundation below.
 
@@ -110,7 +110,7 @@ A planned **CPG (Consumer Packaged Goods)** module—Amazon product-page gap ana
    ```bash
    npm run electron:dev
    ```
-   Builds UI → starts Ollama if needed → Express → opens ComputerUI window.
+   Builds UI → starts Ollama if needed → Express → opens the AI Assist v1 window.
 
 ### Browser-only dev (optional)
 

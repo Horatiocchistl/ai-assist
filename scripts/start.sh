@@ -1,5 +1,5 @@
 #!/bin/bash
-# ComputerUI startup script
+# AI Assist v1 startup script
 # Ensures Ollama is running and model is pulled before starting the app
 
 MODEL="ministral-3:14b"
@@ -38,6 +38,6 @@ fi
 echo "Model $MODEL ready."
 
 echo ""
-echo "Starting ComputerUI..."
+echo "Starting AI Assist v1..."
 node server.js &
 npm run dev

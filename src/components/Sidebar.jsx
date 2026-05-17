@@ -314,7 +314,7 @@ export default function Sidebar({
     <>
       <nav style={s.root(true)} aria-label="Main navigation">
         <div style={s.header}>
-          <span style={s.brand}>ComputerUI</span>
+          <span style={s.brand}>AI Assist v1</span>
           <button type="button" style={s.toggleBtn} onClick={onToggle} title="Close sidebar">
             <PanelLeftClose size={18} />
           </button>

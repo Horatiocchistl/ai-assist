@@ -52,7 +52,7 @@ export default function CenterPanel({
             gap: '0.5rem',
           }}>
             <div style={{ fontSize: '2.5rem' }}>◌</div>
-            <div style={{ fontSize: '0.9em', fontWeight: 500 }}>ComputerUI</div>
+            <div style={{ fontSize: '0.9em', fontWeight: 500 }}>AI Assist v1</div>
             <div style={{ fontSize: '0.8em' }}>Start a conversation</div>
           </div>
         )}
