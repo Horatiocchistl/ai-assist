@@ -72,6 +72,10 @@ export async function runAnalysis(runId, asins, emit, signal) {
         emit({ type: 'log', level: 'info', msg: `${logPrefix} — title: "${asinResult.text.title.slice(0, 100)}"` })
       }
       emit({ type: 'log', level: 'info', msg: `${logPrefix} — ${asinResult.text?.bullets?.length ?? 0} bullet(s) extracted` })
+      const accordions = asinResult.text?.accordionSections ?? []
+      if (accordions.length > 0) {
+        emit({ type: 'log', level: 'info', msg: `${logPrefix} — ${accordions.length} accordion section(s): ${accordions.map(s => `"${s.heading}" (${s.items.length})`).join(', ')}` })
+      }
 
       // Step 3: Capture the initial hero viewport (above the fold)
       const heroPath = path.join(outputDir, 'hero_viewport.png')
