@@ -50,7 +50,7 @@ export async function apifyFetchProduct(url, token, emit) {
     maxOffers: 0,
     maxProductVariantsAsSeparateResults: 0,
     locationDeliverableRoutes: ['PRODUCT', 'SEARCH', 'OFFERS'],
-  })
+  }, { waitSecs: 180 })
 
   emit?.({ type: 'log', level: 'info', msg: `APIFY — run complete, fetching results` })
 
