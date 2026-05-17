@@ -1,16 +1,25 @@
 import path from 'path'
+import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
 import { getBrowserContext, saveSession } from './browser-session.js'
 import { openPage, extractProductText } from './page-navigator.js'
 import { humanScrollPage, delay } from './human-behavior.js'
 import { captureViewport, captureCarousel, captureAplusModules } from './screenshot-capture.js'
 import { probePage } from './page-probe.js'
+import { apifyFetchProduct } from './apify-client.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const CAPTURES_ROOT = path.join(__dirname, '..', 'captures')
 
 export async function runAnalysis(runId, asins, emit, signal) {
   emit({ type: 'log', level: 'info', msg: `Run started — ${asins.length} ASIN(s) queued` })
+
+  const apifyToken = process.env.APIFY_TOKEN || null
+  if (apifyToken) {
+    emit({ type: 'log', level: 'info', msg: 'Apify token present — structured data fetched in parallel with screenshots' })
+  } else {
+    emit({ type: 'log', level: 'warn', msg: 'APIFY_TOKEN not set — falling back to DOM extraction' })
+  }
 
   let context
   try {
@@ -61,57 +70,40 @@ export async function runAnalysis(runId, asins, emit, signal) {
     const asinResult = { asin, url, text: null, carousel: [], aplus: [] }
 
     try {
-      // Step 1: Probe the page — log every selector result before touching anything
+      // Step 1: Probe the page
       emit({ type: 'log', level: 'info', msg: `${logPrefix} — probing page structure` })
       await probePage(page, emit)
 
-      // Step 2: Extract title and bullets from DOM
-      emit({ type: 'log', level: 'info', msg: `${logPrefix} — extracting title & bullets` })
-      asinResult.text = await extractProductText(page)
-      if (asinResult.text?.title) {
-        emit({ type: 'log', level: 'info', msg: `${logPrefix} — title: "${asinResult.text.title.slice(0, 100)}"` })
+      // Steps 2–6: Apify data fetch + Playwright visual capture run in parallel
+      emit({ type: 'log', level: 'info', msg: `${logPrefix} — starting parallel Apify fetch + visual capture` })
+
+      const [apifyResult] = await Promise.allSettled([
+        apifyToken
+          ? apifyFetchProduct(url, apifyToken, emit)
+          : Promise.resolve(null),
+        _runVisualCapture(page, asin, outputDir, logPrefix, emit, signal, asinResult),
+      ])
+
+      if (apifyResult.status === 'fulfilled' && apifyResult.value) {
+        asinResult.text = apifyResult.value
+        const t = asinResult.text
+        emit({ type: 'log', level: 'info', msg: `${logPrefix} — Apify: ${t.bullets.length} bullet(s), ${t.attributes.length} attribute(s), ${t.highResImages.length} high-res image(s)` })
+      } else {
+        if (apifyToken) {
+          emit({ type: 'log', level: 'warn', msg: `${logPrefix} — Apify failed (${apifyResult.reason?.message}), falling back to DOM extraction` })
+        }
+        asinResult.text = await extractProductText(page).catch(() => null)
+        if (asinResult.text?.title) {
+          emit({ type: 'log', level: 'info', msg: `${logPrefix} — DOM title: "${asinResult.text.title.slice(0, 100)}"` })
+        }
       }
-      emit({ type: 'log', level: 'info', msg: `${logPrefix} — ${asinResult.text?.bullets?.length ?? 0} bullet(s) extracted` })
-      const accordions = asinResult.text?.accordionSections ?? []
-      if (accordions.length > 0) {
-        emit({ type: 'log', level: 'info', msg: `${logPrefix} — ${accordions.length} accordion section(s): ${accordions.map(s => `"${s.heading}" (${s.items.length})`).join(', ')}` })
+
+      // Save structured data alongside screenshots
+      if (asinResult.text) {
+        await fs.mkdir(outputDir, { recursive: true })
+        await fs.writeFile(path.join(outputDir, 'product-data.json'), JSON.stringify(asinResult.text, null, 2))
+        emit({ type: 'log', level: 'info', msg: `${logPrefix} — product-data.json saved` })
       }
-
-      // Step 3: Capture the initial hero viewport (above the fold)
-      const heroPath = path.join(outputDir, 'hero_viewport.png')
-      await captureViewport(page, heroPath, emit)
-      emit({ type: 'screenshot', asin, section: 'hero_viewport', path: heroPath })
-
-      // Step 4: Click through the image carousel — all thumbnails
-      emit({ type: 'log', level: 'info', msg: `${logPrefix} — starting carousel capture` })
-      asinResult.carousel = await captureCarousel(page, outputDir, emit)
-      emit({ type: 'log', level: 'info', msg: `${logPrefix} — captured ${asinResult.carousel.length} carousel image(s)` })
-
-      // Step 5: Human-pace scroll through the full page
-      emit({ type: 'log', level: 'info', msg: `${logPrefix} — scrolling page` })
-      let scrollCaptures = 0
-      const capturedScrollMilestones = new Set()
-      await humanScrollPage(
-        page,
-        async (scrollY, pageHeight) => {
-          const pct = scrollY / pageHeight
-          const hit = [0.25, 0.5, 0.75].find(t => Math.abs(pct - t) < 0.04)
-          if (hit && !capturedScrollMilestones.has(hit)) {
-            capturedScrollMilestones.add(hit)
-            const pctLabel = Math.round(hit * 100)
-            const scrollPath = path.join(outputDir, `scroll_${pctLabel}pct.png`)
-            await captureViewport(page, scrollPath, emit)
-            scrollCaptures++
-          }
-        },
-        signal
-      )
-      emit({ type: 'log', level: 'info', msg: `${logPrefix} — scroll complete (${scrollCaptures} viewport captures)` })
-
-      // Step 6: Capture A+ content modules
-      emit({ type: 'log', level: 'info', msg: `${logPrefix} — capturing A+ content` })
-      asinResult.aplus = await captureAplusModules(page, outputDir, emit)
-      emit({ type: 'log', level: 'info', msg: `${logPrefix} — captured ${asinResult.aplus.length} A+ module(s)` })
 
       asinResult.status = 'captured'
       emit({ type: 'asin_complete', asin, carouselCount: asinResult.carousel.length, aplusCount: asinResult.aplus.length })
@@ -145,6 +137,39 @@ export async function runAnalysis(runId, asins, emit, signal) {
   emit({ type: 'log', level: 'info', msg: `Run finished — ${completed} captured, ${errors} failed` })
 
   return results
+}
+
+async function _runVisualCapture(page, asin, outputDir, logPrefix, emit, signal, asinResult) {
+  const heroPath = path.join(outputDir, 'hero_viewport.png')
+  await captureViewport(page, heroPath, emit)
+  emit({ type: 'screenshot', asin, section: 'hero_viewport', path: heroPath })
+
+  emit({ type: 'log', level: 'info', msg: `${logPrefix} — starting carousel capture` })
+  asinResult.carousel = await captureCarousel(page, outputDir, emit)
+  emit({ type: 'log', level: 'info', msg: `${logPrefix} — captured ${asinResult.carousel.length} carousel image(s)` })
+
+  emit({ type: 'log', level: 'info', msg: `${logPrefix} — scrolling page` })
+  let scrollCaptures = 0
+  const capturedScrollMilestones = new Set()
+  await humanScrollPage(
+    page,
+    async (scrollY, pageHeight) => {
+      const pct = scrollY / pageHeight
+      const hit = [0.25, 0.5, 0.75].find(t => Math.abs(pct - t) < 0.04)
+      if (hit && !capturedScrollMilestones.has(hit)) {
+        capturedScrollMilestones.add(hit)
+        const scrollPath = path.join(outputDir, `scroll_${Math.round(hit * 100)}pct.png`)
+        await captureViewport(page, scrollPath, emit)
+        scrollCaptures++
+      }
+    },
+    signal
+  )
+  emit({ type: 'log', level: 'info', msg: `${logPrefix} — scroll complete (${scrollCaptures} viewport captures)` })
+
+  emit({ type: 'log', level: 'info', msg: `${logPrefix} — capturing A+ content` })
+  asinResult.aplus = await captureAplusModules(page, outputDir, emit)
+  emit({ type: 'log', level: 'info', msg: `${logPrefix} — captured ${asinResult.aplus.length} A+ module(s)` })
 }
 
 async function _checkForBlock(page) {
