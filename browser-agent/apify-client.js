@@ -1,6 +1,6 @@
 import { ApifyClient } from 'apify-client'
 
-const ACTOR_ID = 'BG3WDrGdteHgZgbPK'
+const TASK_ID = 'y1DSoxZcsZM7MFPzp'
 
 // Field names verified from real actor output JSON
 function _normalizeResult(item) {
@@ -37,19 +37,8 @@ export async function apifyFetchProduct(url, token, emit) {
 
   const client = new ApifyClient({ token })
 
-  const run = await client.actor(ACTOR_ID).call({
+  const run = await client.task(TASK_ID).call({
     categoryOrProductUrls: [{ url }],
-    maxItemsPerStartUrl: 1,
-    language: 'en',
-    countryCode: 'US',
-    proxyCountry: 'AUTO_SELECT_PROXY_COUNTRY',
-    scrapeProductDetails: true,
-    scrapeProductVariantPrices: false,
-    scrapeSellers: false,
-    useCaptchaSolver: false,
-    maxOffers: 0,
-    maxProductVariantsAsSeparateResults: 0,
-    locationDeliverableRoutes: ['PRODUCT', 'SEARCH', 'OFFERS'],
   }, { waitSecs: 180 })
 
   emit?.({ type: 'log', level: 'info', msg: `APIFY — run complete, fetching results` })
