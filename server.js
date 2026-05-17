@@ -686,13 +686,6 @@ app.get('/api/models', async (req, res) => {
 // In-memory run registry — single-consultant tool, one run at a time
 const gapRuns = new Map() // runId -> { status, asins, logs, listeners, abortController }
 
-// GET /api/gap-analyzer/config  — returns which integrations are configured
-app.get('/api/gap-analyzer/config', (req, res) => {
-  res.json({
-    apifyConfigured: !!process.env.APIFY_TOKEN,
-  })
-})
-
 function gapRunId() {
   return `gap_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
 }
