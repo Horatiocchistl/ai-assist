@@ -72,6 +72,10 @@ export async function runAnalysis(runId, asins, emit, signal) {
         emit({ type: 'log', level: 'info', msg: `${logPrefix} — title: "${asinResult.text.title.slice(0, 100)}"` })
       }
       emit({ type: 'log', level: 'info', msg: `${logPrefix} — ${asinResult.text?.bullets?.length ?? 0} bullet(s) extracted` })
+      const accordions = asinResult.text?.accordionSections ?? []
+      if (accordions.length > 0) {
+        emit({ type: 'log', level: 'info', msg: `${logPrefix} — ${accordions.length} accordion section(s): ${accordions.map(s => `"${s.heading}" (${s.items.length})`).join(', ')}` })
+      }
 
       // Step 3: Capture the initial hero viewport (above the fold)
       const heroPath = path.join(outputDir, 'hero_viewport.png')
@@ -86,12 +90,15 @@ export async function runAnalysis(runId, asins, emit, signal) {
       // Step 5: Human-pace scroll through the full page
       emit({ type: 'log', level: 'info', msg: `${logPrefix} — scrolling page` })
       let scrollCaptures = 0
+      const capturedScrollMilestones = new Set()
       await humanScrollPage(
         page,
         async (scrollY, pageHeight) => {
           const pct = scrollY / pageHeight
-          if ([0.25, 0.5, 0.75].some(t => Math.abs(pct - t) < 0.04)) {
-            const pctLabel = Math.round(pct * 100)
+          const hit = [0.25, 0.5, 0.75].find(t => Math.abs(pct - t) < 0.04)
+          if (hit && !capturedScrollMilestones.has(hit)) {
+            capturedScrollMilestones.add(hit)
+            const pctLabel = Math.round(hit * 100)
             const scrollPath = path.join(outputDir, `scroll_${pctLabel}pct.png`)
             await captureViewport(page, scrollPath, emit)
             scrollCaptures++

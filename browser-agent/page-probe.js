@@ -30,6 +30,11 @@ const SELECTORS = {
   aplusAlt:        '#aplus .aplus-module',
   aplusAlt2:       '#aplus3p_feature_div .apm-tablemodule',
 
+  // Accordion sections (Top highlights, Features & Specs, Measurements, etc.)
+  accordionCollapsed: '.a-expander-collapsed .a-expander-header',
+  accordionExpanded:  '.a-expander-expanded .a-expander-header',
+  accordionContent:   '.a-expander-content li, .a-expander-content .a-list-item',
+
   // Page sections
   dpContainer:     '#dp-container',
   imageBlock:      '#imageBlock, #imageBlock_feature_div',

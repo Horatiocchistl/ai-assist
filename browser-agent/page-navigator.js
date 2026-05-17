@@ -1,5 +1,16 @@
 import { delay } from './human-behavior.js'
 
+// Click every collapsed accordion header on the page and wait for them to open.
+// Amazon uses .a-expander-collapsed to mark closed state; clicking the header expands it.
+async function _expandAccordions(page) {
+  const headers = await page.$$('.a-expander-collapsed .a-expander-header')
+  for (const header of headers) {
+    await header.click().catch(() => {})
+    await delay(350, 550)
+  }
+  if (headers.length > 0) await delay(400, 700)
+}
+
 // Open a page and navigate to url. Returns the Playwright Page object.
 export async function openPage(context, url) {
   const page = await context.newPage()
@@ -63,8 +74,11 @@ function _isTrackingPixel(url) {
   )
 }
 
-// Extract the plain text of product title and bullets from the DOM
+// Extract the plain text of product title, bullets, and accordion sections from the DOM.
+// Expands any collapsed accordion sections first (Top highlights, Features & Specs, etc.)
 export async function extractProductText(page) {
+  await _expandAccordions(page)
+
   return page.evaluate(() => {
     const title = document.querySelector('#productTitle')?.innerText?.trim() || null
 
@@ -78,6 +92,17 @@ export async function extractProductText(page) {
       .map(el => el.innerText.trim())
       .filter(t => t.length > 0)
 
-    return { title, bullets }
+    // Capture expanded accordion sections (Top highlights, Features & Specs, Measurements, etc.)
+    const accordionSections = []
+    document.querySelectorAll('.a-expander-container').forEach(container => {
+      const heading = container.querySelector('.a-expander-header')?.innerText?.trim()
+      if (!heading) return
+      const items = Array.from(container.querySelectorAll('.a-expander-content li, .a-expander-content .a-list-item'))
+        .map(el => el.innerText.trim())
+        .filter(t => t.length > 0)
+      if (items.length > 0) accordionSections.push({ heading, items })
+    })
+
+    return { title, bullets, accordionSections }
   })
 }

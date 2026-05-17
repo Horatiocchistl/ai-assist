@@ -117,20 +117,7 @@ export async function captureCarousel(page, outputDir, emit) {
 
     await thumb.click()
 
-    // Wait for the main image src to actually change — up to 5s
-    try {
-      await page.waitForFunction(
-        (prev) => {
-          const el = document.querySelector('#landingImage, #imgBlkFront')
-          return el && el.src !== prev
-        },
-        prevSrc,
-        { timeout: 5000 }
-      )
-    } catch {
-      emit?.({ type: 'log', level: 'warn', msg: `CAROUSEL — src did not change after clicking thumb ${i + 1} (may be first image or slow load)` })
-    }
-
+    // Amazon swaps carousel images via CSS/data-attributes, not img.src — just wait for render
     await delay(800, 1500)
     await waitForViewportImages(page, 5000)
 
