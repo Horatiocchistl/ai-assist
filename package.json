@@ -20,6 +20,7 @@
     "files": [
       "dist/**/*",
       "server.js",
+      "browser-agent/**/*",
       "skill-dirs.json",
       "electron/**/*",
       "node_modules/**/*"
