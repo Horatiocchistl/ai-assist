@@ -88,7 +88,7 @@ export async function runAnalysis(runId, asins, emit, signal) {
       // Merge text data — Apify wins; DOM extraction is the fallback
       if (apifyResult.status === 'fulfilled' && apifyResult.value) {
         asinResult.text = apifyResult.value
-        emit({ type: 'log', level: 'info', msg: `${logPrefix} — Apify data merged (${asinResult.text.bullets.length} bullet(s), ${Object.keys(asinResult.text.specs).length} spec(s))` })
+        emit({ type: 'log', level: 'info', msg: `${logPrefix} — Apify data merged (${asinResult.text.bullets.length} bullet(s), brand: ${asinResult.text.brand})` })
       } else {
         if (apifyToken) {
           emit({ type: 'log', level: 'warn', msg: `${logPrefix} — Apify failed (${apifyResult.reason?.message}), falling back to DOM extraction` })

@@ -55,31 +55,33 @@ async function _pollUntilDone(runId, token, emit) {
   throw new Error('Apify run timed out after 3 minutes')
 }
 
+// Field names verified against actual actor output schema:
+// title, asin, url, brand, inStock, stars, reviewsCount,
+// price { value, currency }, features (array of bullet strings),
+// description (nullable string), thumbnailImage, seller, breadCrumbs
 function _normalizeResult(item) {
   if (!item) return null
 
-  // Bullets: actor returns either `bulletPoints` array or `description` string
-  const bullets = Array.isArray(item.bulletPoints) && item.bulletPoints.length > 0
-    ? item.bulletPoints
-    : typeof item.description === 'string' && item.description.trim()
-      ? item.description.split('\n').map(s => s.trim()).filter(Boolean)
-      : []
+  // `features` is the bullet points array
+  const bullets = Array.isArray(item.features) ? item.features.filter(Boolean) : []
 
-  // Specs: actor returns `productDetails` (object) and/or `technicalDetails` (object)
-  const specs = {
-    ...(item.productDetails || {}),
-    ...(item.technicalDetails || {}),
-  }
+  // price is an object { value, currency }
+  const price = item.price?.value != null
+    ? `${item.price.currency}${item.price.value}`
+    : null
 
   return {
-    title:       item.title || null,
-    brand:       item.brand || specs['Brand'] || null,
-    price:       item.price || null,
-    asin:        item.asin || null,
-    url:         item.url || null,
+    title:        item.title || null,
+    brand:        item.brand || null,
+    price,
+    asin:         item.asin || null,
+    url:          item.url || null,
+    inStock:      item.inStock ?? null,
+    stars:        item.stars ?? null,
+    reviewsCount: item.reviewsCount ?? null,
     bullets,
-    specs,
-    // Raw item preserved so analysis layer can access anything not normalized above
+    description:  item.description || null,
+    breadCrumbs:  item.breadCrumbs || null,
     _raw: item,
   }
 }
@@ -119,7 +121,7 @@ export async function apifyFetchProduct(url, token, emit) {
   if (!item) throw new Error('Apify returned empty dataset')
 
   const result = _normalizeResult(item)
-  emit?.({ type: 'log', level: 'info', msg: `APIFY — title: "${result.title?.slice(0, 80)}", ${result.bullets.length} bullet(s), ${Object.keys(result.specs).length} spec(s)` })
+  emit?.({ type: 'log', level: 'info', msg: `APIFY — title: "${result.title?.slice(0, 80)}", ${result.bullets.length} bullet(s), stars: ${result.stars}, brand: ${result.brand}` })
 
   return result
 }
