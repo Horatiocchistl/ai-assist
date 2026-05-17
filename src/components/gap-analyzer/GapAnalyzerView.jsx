@@ -16,8 +16,16 @@ export default function GapAnalyzerView() {
   const [runStatus, setRunStatus] = useState('idle') // idle | running | complete | stopped | error
   const [log, setLog] = useState([])
   const [asinProgress, setAsinProgress] = useState({}) // asin -> { status, carouselCount, aplusCount }
+  const [apifyConfigured, setApifyConfigured] = useState(null) // null=loading, true/false
   const logEndRef = useRef(null)
   const eventSourceRef = useRef(null)
+
+  useEffect(() => {
+    fetch(`${API}/config`)
+      .then(r => r.json())
+      .then(d => setApifyConfigured(d.apifyConfigured))
+      .catch(() => setApifyConfigured(false))
+  }, [])
 
   // Auto-scroll log to bottom
   useEffect(() => {
@@ -139,6 +147,25 @@ export default function GapAnalyzerView() {
           <ScanSearch size={16} style={{ color: 'var(--accent)' }} />
           <span style={{ fontWeight: 600, fontSize: '0.95em' }}>Gap Analyzer</span>
         </div>
+
+        {/* Apify integration status */}
+        {apifyConfigured !== null && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.35rem',
+            padding: '0.25rem 0.55rem',
+            borderRadius: 5,
+            background: apifyConfigured ? 'rgba(0,180,80,0.1)' : 'rgba(180,80,0,0.1)',
+            border: `1px solid ${apifyConfigured ? 'rgba(0,180,80,0.3)' : 'rgba(180,80,0,0.3)'}`,
+            fontSize: '0.72em',
+            color: apifyConfigured ? '#3c9' : '#e07030',
+            flexShrink: 0,
+          }}>
+            {apifyConfigured
+              ? <CheckCircle size={10} />
+              : <AlertCircle size={10} />}
+            {apifyConfigured ? 'Apify connected' : 'Apify key missing'}
+          </div>
+        )}
 
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <AsinManager
