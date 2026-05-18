@@ -7,6 +7,8 @@ import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { createClient } from '@supabase/supabase-js'
+import { resolveLocation, GeocodeError } from './src/lib/geocode.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -17,6 +19,7 @@ app.use(express.json())
 
 const HOME = process.env.HOME || '/home/node'
 const REPORTS_DIR = path.join(__dirname, 'reports')
+const DOCUMENTS_BUCKET = 'conversation-documents'
 const SKILL_DIRS_FILE = path.join(__dirname, 'skill-dirs.json')
 const SKILL_CACHE_DIR = path.join(HOME, '.computerui', 'skill-cache')
 const REMOTE_CACHE_TTL_MS = 60 * 60 * 1000
@@ -74,7 +77,26 @@ function isSafeReportId(reportId) {
   return typeof reportId === 'string' && /^rpt_\d+_[a-f0-9]+$/.test(reportId)
 }
 
+function getSupabase() {
+  const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+  const key = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
+  if (!url || !key) return null
+  return createClient(url, key)
+}
+
+function purgeSessionDraftReports() {
+  ensureReportsDir()
+  try {
+    for (const name of fs.readdirSync(REPORTS_DIR)) {
+      if (/\.(md|json)$/.test(name) || name.endsWith('.input.md')) {
+        fs.unlinkSync(path.join(REPORTS_DIR, name))
+      }
+    }
+  } catch { /* ignore */ }
+}
+
 ensureReportsDir()
+purgeSessionDraftReports()
 
 function cacheKeyForUrl(url) {
   return crypto.createHash('sha256').update(url.trim()).digest('hex').slice(0, 16)
@@ -531,10 +553,142 @@ app.get('/api/reports/:id', (req, res) => {
   try {
     const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
     const content = fs.readFileSync(mdPath, 'utf-8')
-    res.json({ ...meta, content, draftPath: mdPath })
+    res.json({ ...meta, content, status: 'draft', draftPath: mdPath })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
+})
+
+function isSafeConversationId(id) {
+  return typeof id === 'string' && /^[a-zA-Z0-9_-]+$/.test(id) && id.length <= 128
+}
+
+function isSafeUuid(id) {
+  return typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id)
+}
+
+app.post('/api/conversations/:conversationId/documents', async (req, res) => {
+  const { conversationId } = req.params
+  if (!isSafeConversationId(conversationId)) {
+    return res.status(400).json({ error: 'Invalid conversation id' })
+  }
+  const { reportId, projectId } = req.body || {}
+  if (!reportId || !isSafeReportId(reportId)) {
+    return res.status(400).json({ error: 'reportId is required' })
+  }
+
+  const supabase = getSupabase()
+  if (!supabase) {
+    return res.status(503).json({ error: 'Supabase not configured' })
+  }
+
+  const mdPath = path.join(REPORTS_DIR, `${reportId}.md`)
+  if (!fs.existsSync(mdPath)) {
+    return res.status(404).json({ error: 'Draft report not found' })
+  }
+
+  try {
+    const content = fs.readFileSync(mdPath, 'utf-8')
+    const metaPath = path.join(REPORTS_DIR, `${reportId}.meta.json`)
+    let filename = buildReportFilename(content)
+    if (fs.existsSync(metaPath)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+        if (meta.filename) filename = meta.filename
+      } catch { /* use derived filename */ }
+    }
+    const title = extractReportTitle(content)
+    const docId = crypto.randomUUID()
+    const storagePath = `${docId}.md`
+
+    const { error: upErr } = await supabase.storage
+      .from(DOCUMENTS_BUCKET)
+      .upload(storagePath, content, { upsert: true, contentType: 'text/markdown;charset=utf-8' })
+    if (upErr) {
+      return res.status(500).json({ error: upErr.message })
+    }
+
+    const row = {
+      id: docId,
+      conversation_id: conversationId,
+      project_id: projectId || null,
+      title,
+      filename,
+      storage_path: storagePath,
+      saved_at: new Date().toISOString(),
+    }
+    const { data, error: insErr } = await supabase
+      .from('conversation_documents')
+      .insert(row)
+      .select()
+      .single()
+    if (insErr) {
+      await supabase.storage.from(DOCUMENTS_BUCKET).remove([storagePath])
+      return res.status(500).json({ error: insErr.message })
+    }
+
+    res.json({ ok: true, document: data })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.get('/api/conversations/:conversationId/documents', async (req, res) => {
+  const { conversationId } = req.params
+  if (!isSafeConversationId(conversationId)) {
+    return res.status(400).json({ error: 'Invalid conversation id' })
+  }
+  const supabase = getSupabase()
+  if (!supabase) return res.json([])
+  const { data, error } = await supabase
+    .from('conversation_documents')
+    .select('id, conversation_id, project_id, title, filename, saved_at, created_at')
+    .eq('conversation_id', conversationId)
+    .order('saved_at', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data || [])
+})
+
+app.get('/api/projects/:projectId/documents', async (req, res) => {
+  const { projectId } = req.params
+  if (!projectId || typeof projectId !== 'string') {
+    return res.status(400).json({ error: 'Invalid project id' })
+  }
+  const supabase = getSupabase()
+  if (!supabase) return res.json([])
+  const { data, error } = await supabase
+    .from('conversation_documents')
+    .select('id, conversation_id, project_id, title, filename, saved_at, created_at')
+    .eq('project_id', projectId)
+    .order('saved_at', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data || [])
+})
+
+app.get('/api/documents/:id', async (req, res) => {
+  const { id } = req.params
+  if (!isSafeUuid(id)) {
+    return res.status(400).json({ error: 'Invalid document id' })
+  }
+  const supabase = getSupabase()
+  if (!supabase) {
+    return res.status(503).json({ error: 'Supabase not configured' })
+  }
+  const { data: row, error } = await supabase
+    .from('conversation_documents')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) return res.status(500).json({ error: error.message })
+  if (!row) return res.status(404).json({ error: 'Document not found' })
+
+  const { data: blob, error: dlErr } = await supabase.storage
+    .from(DOCUMENTS_BUCKET)
+    .download(row.storage_path)
+  if (dlErr) return res.status(500).json({ error: dlErr.message })
+
+  const content = await blob.text()
+  res.json({ ...row, content, status: 'saved' })
 })
 
 app.post('/api/weather', async (req, res) => {
@@ -552,6 +706,7 @@ app.post('/api/weather', async (req, res) => {
     forecastDays = n
   }
   try {
+    const coords = await resolveLocation(getSupabase(), location.trim())
     const resolved = await resolveWeatherScriptPath()
     if (!resolved) {
       return res.status(404).json({ error: 'Weather skill or get_weather.py not found' })
@@ -561,7 +716,17 @@ app.post('/api/weather', async (req, res) => {
     if (!env.SSL_CERT_FILE && fs.existsSync('/etc/ssl/cert.pem')) {
       env.SSL_CERT_FILE = '/etc/ssl/cert.pem'
     }
-    const pyArgs = [scriptPath, location.trim(), '--format', fmt, '--forecast-days', String(forecastDays)]
+    if (!coords.fromCache) {
+      env.OSM_ATTRIBUTION = '1'
+    }
+    const pyArgs = [
+      scriptPath,
+      '--lat', String(coords.lat),
+      '--lon', String(coords.lon),
+      '--display-name', coords.displayName,
+      '--format', fmt,
+      '--forecast-days', String(forecastDays),
+    ]
     const { stdout, stderr } = await execFileAsync(
       'python3',
       pyArgs,
@@ -574,6 +739,9 @@ app.post('/api/weather', async (req, res) => {
     )
     res.json({ stdout: stdout || '', stderr: stderr || '', exitCode: 0 })
   } catch (err) {
+    if (err instanceof GeocodeError) {
+      return res.json({ stdout: '', stderr: err.message, exitCode: 1 })
+    }
     const exitCode = err.code === 'ENOENT' ? 127 : (typeof err.code === 'number' ? err.code : 1)
     res.json({
       stdout: err.stdout || '',

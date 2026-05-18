@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { generateId } from '../lib/storage.js'
+import { getLastActiveConversationId, setLastActiveConversationId } from '../lib/documentPersistence.js'
 import supabase from '../lib/supabase.js'
 
 export function useConversations() {
@@ -15,9 +16,7 @@ export function useConversations() {
       .order('updated_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) { console.error(error); return }
-        // Clear stale localStorage from pre-Supabase era
         localStorage.removeItem('computerui_conversations')
-        localStorage.removeItem('computerui_active_id')
         const normalized = data.map(c => ({
           id: c.id,
           projectId: c.project_id || null,
@@ -28,9 +27,12 @@ export function useConversations() {
           messages: [],
         }))
         setConversations(normalized)
-        // Select first non-project conversation (same filter as Sidebar)
         const nonProject = normalized.filter(c => !c.projectId)
-        setActiveId(nonProject[0]?.id || null)
+        const storedActive = getLastActiveConversationId()
+        const restored = storedActive && normalized.some(c => c.id === storedActive)
+          ? storedActive
+          : nonProject[0]?.id || null
+        setActiveId(restored)
       })
   }, [])
 
@@ -117,7 +119,12 @@ export function useConversations() {
 
   const select = useCallback((id) => {
     setActiveId(id)
+    setLastActiveConversationId(id)
   }, [])
+
+  useEffect(() => {
+    if (activeId) setLastActiveConversationId(activeId)
+  }, [activeId])
 
   const renameConversation = useCallback(async (id, title) => {
     const { error } = await supabase

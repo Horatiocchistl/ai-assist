@@ -7,7 +7,16 @@ import Sidebar from './components/Sidebar.jsx'
 import { useConversations } from './hooks/useConversations.js'
 import { useProjects, formatRelevantKnowledge } from './hooks/useProjects.js'
 import { useOllama } from './hooks/useOllama.js'
-import { ALL_TOOLS, SKILL_TOOLS, isDocumentRequest } from './lib/tools.js'
+import { ALL_TOOLS, SKILL_TOOLS, isDocumentRequest, executeTool } from './lib/tools.js'
+import { parseWeatherLocation } from './lib/weatherRequest.js'
+import { registerSessionDraft, getSessionDraft, clearSessionDraft } from './hooks/useSessionDrafts.js'
+import {
+  loadSavedDocumentsForConversation,
+  commitSaveDocument,
+  fetchSavedDocument,
+} from './hooks/useSavedDocuments.js'
+import { findMentionedDocument, formatDocumentContextSection } from './lib/documentContext.js'
+import { getLastDocumentId, setLastDocumentId } from './lib/documentPersistence.js'
 import SkillDirsModal from './components/SkillDirsModal.jsx'
 import ReportPreviewPanel from './components/ReportPreviewPanel.jsx'
 import ChatsView from './components/ChatsView.jsx'
@@ -113,11 +122,74 @@ export default function App() {
   const [showSkillDirs, setShowSkillDirs] = useState(false)
   const [activeReportId, setActiveReportId] = useState(null)
   const [reportError, setReportError] = useState(null)
+  const [savedDocuments, setSavedDocuments] = useState([])
+  const [activeSavedDocument, setActiveSavedDocument] = useState(null)
+  const openDocRef = useRef({ id: null, content: null, meta: null })
+
+  const handleOpenDocumentChange = useCallback((id, content, meta) => {
+    openDocRef.current = { id, content, meta }
+  }, [])
 
   useEffect(() => {
-    setActiveReportId(null)
+    if (!activeId) {
+      setSavedDocuments([])
+      setActiveSavedDocument(null)
+      setActiveReportId(null)
+      setReportError(null)
+      openDocRef.current = { id: null, content: null, meta: null }
+      return undefined
+    }
+    let cancelled = false
+
+    async function loadDocsAndPreview() {
+      let docs = []
+      try {
+        docs = await loadSavedDocumentsForConversation(activeId)
+        if (!cancelled) setSavedDocuments(docs)
+      } catch {
+        if (!cancelled) setSavedDocuments([])
+      }
+
+      if (!cancelled && docs.length > 0 && !active?.title?.trim()) {
+        renameConversation(activeId, docs[0].title)
+      }
+
+      const draft = getSessionDraft(activeId)
+      if (draft?.reportId) {
+        if (!cancelled) {
+          setActiveReportId(draft.reportId)
+          setActiveSavedDocument(null)
+        }
+        return
+      }
+
+      const lastDocId = getLastDocumentId(activeId)
+      const pickId = lastDocId && docs.some(d => d.id === lastDocId)
+        ? lastDocId
+        : docs[0]?.id
+      if (pickId) {
+        try {
+          const full = await fetchSavedDocument(pickId)
+          if (!cancelled) {
+            setActiveSavedDocument(full)
+            setActiveReportId(null)
+          }
+        } catch {
+          if (!cancelled) {
+            setActiveSavedDocument(null)
+            setActiveReportId(null)
+          }
+        }
+      } else if (!cancelled) {
+        setActiveReportId(null)
+        setActiveSavedDocument(null)
+      }
+    }
+
+    loadDocsAndPreview()
     setReportError(null)
-  }, [activeId])
+    return () => { cancelled = true }
+  }, [activeId, active?.title, renameConversation])
 
   useEffect(() => {
     if (view === 'projectDetail' && activeProjectId) {
@@ -192,6 +264,31 @@ export default function App() {
 
     appendMessage(convId, userMsg)
 
+    const weatherLocation = parseWeatherLocation(text)
+    if (weatherLocation) {
+      setStreamingMessage(null)
+      setDocumentCreating(false)
+      setDocPhase('idle')
+      try {
+        const result = await executeTool('get_weather', {
+          location: weatherLocation,
+          format: 'human',
+        }, { projectId: conv.projectId, conversationId: convId })
+        appendMessage(convId, {
+          role: 'assistant',
+          content: result,
+          thinkContent: null,
+        })
+      } catch (err) {
+        appendMessage(convId, {
+          role: 'assistant',
+          content: `Error: ${err.message}`,
+          thinkContent: null,
+        })
+      }
+      return
+    }
+
     let messagesToSend, systemPrompt, tools
 
     if (conv.projectId) {
@@ -211,6 +308,22 @@ export default function App() {
       systemPrompt = REGULAR_SYSTEM_PROMPT
       messagesToSend = allMsgs.slice(-10)
       tools = SKILL_TOOLS
+    }
+
+    let docSection = null
+    if (openDocRef.current.content && openDocRef.current.meta) {
+      docSection = formatDocumentContextSection(openDocRef.current.meta, openDocRef.current.content)
+    } else {
+      const mentioned = findMentionedDocument(text, savedDocuments)
+      if (mentioned) {
+        try {
+          const full = await fetchSavedDocument(mentioned.id)
+          docSection = formatDocumentContextSection(full, full.content)
+        } catch { /* skip if fetch fails */ }
+      }
+    }
+    if (docSection) {
+      systemPrompt = [systemPrompt, docSection].filter(Boolean).join('\n\n')
     }
 
     const docRun = isDocumentRequest(text)
@@ -244,8 +357,10 @@ export default function App() {
         setDocumentCreating(true)
         setDocPhase(prev => (prev === 'idle' ? 'preparing' : prev))
       },
-      onDraftCreated: ({ reportId }) => {
+      onDraftCreated: ({ reportId, filename }) => {
+        registerSessionDraft(convId, { reportId, filename })
         setActiveReportId(reportId)
+        setActiveSavedDocument(null)
         setReportError(null)
       },
       onDraftFailed: ({ error }) => {
@@ -287,7 +402,50 @@ export default function App() {
         appendMessage(convId, { role: 'assistant', content: `Error: ${err.message}`, thinkContent: null })
       },
     })
-  }, [active, projects, conversations, appendMessage, createNew, send, model, buildProjectSystemPrompt, retrieveRelevantKnowledge])
+  }, [active, projects, conversations, savedDocuments, appendMessage, createNew, send, model, buildProjectSystemPrompt, retrieveRelevantKnowledge])
+
+  const handleCommitSave = useCallback(async (reportId) => {
+    if (!activeId) throw new Error('No active conversation')
+    const row = await commitSaveDocument(activeId, {
+      reportId,
+      projectId: active?.projectId || null,
+    })
+    clearSessionDraft(activeId)
+    setActiveReportId(null)
+    const full = await fetchSavedDocument(row.id)
+    setActiveSavedDocument(full)
+    setLastDocumentId(activeId, row.id)
+    const docs = await loadSavedDocumentsForConversation(activeId)
+    setSavedDocuments(docs)
+    const title = row.title?.trim()
+    if (title && (!active?.title?.trim() || active.title === 'Untitled conversation')) {
+      await renameConversation(activeId, title)
+    }
+  }, [activeId, active?.projectId, active?.title, renameConversation])
+
+  const handleSelectSavedDocument = useCallback(async (docId) => {
+    const full = await fetchSavedDocument(docId)
+    setActiveSavedDocument(full)
+    setActiveReportId(null)
+    if (activeId) setLastDocumentId(activeId, docId)
+  }, [activeId])
+
+  const handleOpenProjectDocument = useCallback(async (conversationId, documentId) => {
+    const conv = conversations.find(c => c.id === conversationId)
+    if (conv?.projectId) selectProject(conv.projectId)
+    else clearActiveProject()
+    select(conversationId)
+    setView('chat')
+    try {
+      const full = await fetchSavedDocument(documentId)
+      setActiveSavedDocument(full)
+      setActiveReportId(null)
+      const docs = await loadSavedDocumentsForConversation(conversationId)
+      setSavedDocuments(docs)
+    } catch (err) {
+      setReportError(err.message)
+    }
+  }, [conversations, select, selectProject, clearActiveProject])
 
   const handleRequestReasoning = useCallback(async (msgIndex) => {
     if (!active) return
@@ -449,6 +607,7 @@ export default function App() {
             onRemoveKnowledge={removeKnowledge}
             onSelectConv={handleProjectDetailSelectConv}
             onNewConv={handleNewConvFromProject}
+            onOpenDocument={handleOpenProjectDocument}
             onBack={handleProjectDetailBack}
             startInEditMode={startEditing}
           />
@@ -496,6 +655,8 @@ export default function App() {
           }}>
             <ReportPreviewPanel
               reportId={activeReportId}
+              savedDocument={activeSavedDocument}
+              savedDocuments={savedDocuments}
               error={reportError}
               documentCreating={documentCreating}
               documentPhase={docPhase}
@@ -504,9 +665,14 @@ export default function App() {
                 setDocumentCreating(false)
                 setDocPhase('idle')
               }}
+              onCommitSave={handleCommitSave}
+              onSelectSavedDocument={handleSelectSavedDocument}
+              onOpenDocumentChange={handleOpenDocumentChange}
               onClose={() => {
                 setActiveReportId(null)
+                setActiveSavedDocument(null)
                 setReportError(null)
+                openDocRef.current = { id: null, content: null, meta: null }
                 docRunActiveRef.current = false
                 setDocumentCreating(false)
                 setDocPhase('idle')

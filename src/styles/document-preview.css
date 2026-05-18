@@ -10,6 +10,7 @@
 
 .document-preview-page {
   max-width: 720px;
+  width: 100%;
   margin: 0 auto 32px;
   background: #ffffff;
   box-shadow:
@@ -17,6 +18,8 @@
     0 4px 12px rgba(0, 0, 0, 0.08);
   padding: 48px 56px;
   min-height: 480px;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .document-preview {
@@ -136,31 +139,44 @@
   color: inherit;
 }
 
-.document-preview table {
-  width: 100%;
-  border-collapse: collapse;
+/* Wide tables scroll inside the page instead of clipping */
+.document-preview-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
   margin: 1em 0;
-  font-size: 0.95em;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
 }
 
-.document-preview thead {
+.document-preview-table-wrap table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+  font-size: 0.82em;
+  line-height: 1.4;
+}
+
+.document-preview-table-wrap thead {
   background: #f1f5f9;
 }
 
-.document-preview th,
-.document-preview td {
+.document-preview-table-wrap th,
+.document-preview-table-wrap td {
   border: 1px solid #cbd5e1;
-  padding: 8px 12px;
+  padding: 6px 10px;
   text-align: left;
   vertical-align: top;
+  white-space: nowrap;
 }
 
-.document-preview th {
+.document-preview-table-wrap th {
   font-weight: 700;
   color: var(--doc-heading, #1a365d);
 }
 
-.document-preview tr:nth-child(even) td {
+.document-preview-table-wrap tr:nth-child(even) td {
   background: #f8fafc;
 }
 

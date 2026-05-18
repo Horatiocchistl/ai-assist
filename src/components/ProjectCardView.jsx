@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { loadSavedDocumentsForProject } from '../hooks/useSavedDocuments.js'
 import { ArrowLeft, Plus, MessageSquare, FileText, BookOpen, Upload, X, Pencil, Check } from 'lucide-react'
 import supabase from '../lib/supabase.js'
 import { extractFileText } from '../lib/extractFileText.js'
@@ -198,6 +199,7 @@ export default function ProjectCardView({
   onRemoveKnowledge,
   onSelectConv,
   onNewConv,
+  onOpenDocument,
   onBack,
   startInEditMode,
 }) {
@@ -211,6 +213,19 @@ export default function ProjectCardView({
   const [kbContent, setKbContent] = useState('')
   const [kbError, setKbError] = useState('')
   const [ingesting, setIngesting] = useState(false)
+  const [projectDocuments, setProjectDocuments] = useState([])
+
+  useEffect(() => {
+    if (!project?.id) {
+      setProjectDocuments([])
+      return undefined
+    }
+    let cancelled = false
+    loadSavedDocumentsForProject(project.id)
+      .then(docs => { if (!cancelled) setProjectDocuments(docs) })
+      .catch(() => { if (!cancelled) setProjectDocuments([]) })
+    return () => { cancelled = true }
+  }, [project?.id])
 
   if (!project) {
     return (
@@ -387,6 +402,38 @@ export default function ProjectCardView({
           ) : (
             <div style={{ ...instrText, marginBottom: '1.25rem' }}>
               {project.instructions || <span style={emptyHint}>Add instructions to tailor AI responses.</span>}
+            </div>
+          )}
+
+          <div style={sectionHead}>
+            <span style={sectionLabel}>Documents</span>
+          </div>
+          {projectDocuments.length === 0 ? (
+            <div style={{ ...emptyHint, marginBottom: '1.25rem' }}>
+              Saved reports from project chats appear here.
+            </div>
+          ) : (
+            <div style={{ marginBottom: '1.25rem' }}>
+              {projectDocuments.map(d => (
+                <div
+                  key={d.id}
+                  style={{ ...kbRow, cursor: onOpenDocument ? 'pointer' : 'default' }}
+                  onClick={() => onOpenDocument?.(d.conversation_id, d.id)}
+                  role={onOpenDocument ? 'button' : undefined}
+                  tabIndex={onOpenDocument ? 0 : undefined}
+                  onKeyDown={e => {
+                    if (onOpenDocument && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault()
+                      onOpenDocument(d.conversation_id, d.id)
+                    }
+                  }}
+                >
+                  <BookOpen size={14} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />
+                  <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {d.title || d.filename}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 

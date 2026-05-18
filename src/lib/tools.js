@@ -79,6 +79,20 @@ const SKILL_TOOL_DEFS = [
   {
     type: 'function',
     function: {
+      name: 'read_saved_document',
+      description: 'Read a permanently saved conversation document by id. Use only when the user asks about a saved document; drafts are shown in the right preview panel.',
+      parameters: {
+        type: 'object',
+        required: ['document_id'],
+        properties: {
+          document_id: { type: 'string', description: 'Saved document UUID' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_weather',
       description: 'REQUIRED for all weather questions — the only allowed method. Pass location exactly as the user provided: use their zip if they gave a zip; use "City, ST" if they gave both; never shorten to city name alone when they gave more. If only an ambiguous city name, ask for state/zip before calling. On failure, tell the user the exact tool error text (do not invent weather).',
       parameters: {
@@ -271,6 +285,20 @@ async function execListProjectConversations(args, context) {
   })))
 }
 
+async function execReadSavedDocument(args) {
+  const { document_id: documentId } = args
+  if (!documentId) return 'Error: document_id is required'
+  try {
+    const res = await fetch(`${getApiBase()}/api/documents/${encodeURIComponent(documentId)}`)
+    const data = await res.json()
+    if (!res.ok) return `Error: ${data.error || 'Document not found'}`
+    const label = data.title || data.filename || 'Document'
+    return `Document: ${label}\n\n${data.content || ''}`
+  } catch (err) {
+    return `Error loading document: ${err.message}`
+  }
+}
+
 async function execReadConversation(args) {
   const { conversation_id } = args
   if (!conversation_id) return 'Error: conversation_id is required'
@@ -296,6 +324,7 @@ export async function executeTool(name, args, context) {
     case 'get_weather': return execGetWeather(args)
     case 'list_project_conversations': return execListProjectConversations(args, context)
     case 'read_conversation': return execReadConversation(args)
+    case 'read_saved_document': return execReadSavedDocument(args)
     default: return `Error: Unknown tool "${name}"`
   }
 }
