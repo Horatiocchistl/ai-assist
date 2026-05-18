@@ -167,7 +167,7 @@ function DataRow({ label, children }) {
   )
 }
 
-function ProductDataPanel({ data }) {
+function ProductDataPanel({ data, onLightbox }) {
   if (!data) {
     return (
       <div style={{ padding: '2rem 1rem', color: 'var(--text-muted)', fontSize: '0.8em', textAlign: 'center' }}>
@@ -248,14 +248,64 @@ function ProductDataPanel({ data }) {
         ))}
       </>}
 
-      {(safeArr(data.highResImages).length > 0 || safeArr(data.aplusImages).length > 0) && <>
-        <SectionLabel>Images</SectionLabel>
-        {safeArr(data.highResImages).length > 0 && (
-          <DataRow label="High-res tiles">{safeArr(data.highResImages).length}</DataRow>
-        )}
-        {safeArr(data.aplusImages).length > 0 && (
-          <DataRow label="A+ (Apify)">{safeArr(data.aplusImages).length}</DataRow>
-        )}
+      {safeArr(data.highResImages).length > 0 && <>
+        <SectionLabel>High-Res Images ({safeArr(data.highResImages).length})</SectionLabel>
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(3, 1fr)', 
+          gap: '0.4rem',
+          padding: '0.5rem 0'
+        }}>
+          {safeArr(data.highResImages).map((url, i) => (
+            <div key={i} style={{ aspectRatio: '1', overflow: 'hidden', cursor: 'zoom-in' }}>
+              <img
+                src={url}
+                alt={`High-res ${i + 1}`}
+                onClick={() => onLightbox(url)}
+                loading="lazy"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  border: '1px solid var(--border)',
+                  borderRadius: 4,
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      </>}
+
+      {safeArr(data.aplusImages).length > 0 && <>
+        <SectionLabel>A+ Content Images ({safeArr(data.aplusImages).length})</SectionLabel>
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(3, 1fr)', 
+          gap: '0.4rem',
+          padding: '0.5rem 0'
+        }}>
+          {safeArr(data.aplusImages).map((img, i) => {
+            const url = typeof img === 'string' ? img : img?.url
+            if (!url) return null
+            return (
+              <div key={i} style={{ aspectRatio: '1', overflow: 'hidden', cursor: 'zoom-in' }}>
+                <img
+                  src={url}
+                  alt={`A+ ${i + 1}`}
+                  onClick={() => onLightbox(url)}
+                  loading="lazy"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    border: '1px solid var(--border)',
+                    borderRadius: 4,
+                  }}
+                />
+              </div>
+            )
+          })}
+        </div>
       </>}
 
       {description && <>
@@ -386,7 +436,7 @@ export default function GapDetailView({ asin, liveFiles = [], onBack, onViewComp
           <ScreenshotPanel imageUrls={imageUrls} onLightbox={setLightbox} />
         </div>
         <div style={{ flex: '0 0 42%', overflowY: 'auto' }}>
-          <ProductDataPanel data={productData} />
+          <ProductDataPanel data={productData} onLightbox={setLightbox} />
         </div>
       </div>
 
