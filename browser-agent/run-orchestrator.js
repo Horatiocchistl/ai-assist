@@ -170,6 +170,24 @@ export async function runAnalysis(runId, asins, emit, signal) {
 
   await saveSession().catch(() => {})
 
+  // Save manifest so the Results tab can restore after navigation
+  const manifest = {
+    runId,
+    completedAt: new Date().toISOString(),
+    asins: results.map(r => ({
+      asin: r.asin,
+      url: r.url,
+      status: r.status,
+      carouselCount: r.carousel?.length ?? 0,
+      aplusCount: r.aplus?.length ?? 0,
+    })),
+  }
+  await fs.mkdir(path.join(CAPTURES_ROOT, runId), { recursive: true }).catch(() => {})
+  await fs.writeFile(
+    path.join(CAPTURES_ROOT, runId, 'run-manifest.json'),
+    JSON.stringify(manifest, null, 2)
+  ).catch(() => {})
+
   const completed = results.filter(r => r.status === 'captured').length
   const errors = results.filter(r => r.status === 'error' || r.status === 'blocked').length
   emit({ type: 'run_complete', completed, errors, total: asins.length })
