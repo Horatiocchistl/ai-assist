@@ -14,6 +14,54 @@ const LOG_COLORS = {
   error: '#c05820',
 }
 
+function buildAsinsData(asinsList, progress) {
+  return asinsList.map(a => ({
+    asin: a.asin,
+    url: a.url,
+    status: progress[a.asin]?.status === 'complete' ? 'captured' : (progress[a.asin]?.status || 'error'),
+    carouselCount: progress[a.asin]?.carouselCount ?? 0,
+    aplusCount: progress[a.asin]?.aplusCount ?? 0,
+  }))
+}
+
+function applySessionToState(session, {
+  setRunId,
+  setAsins,
+  setAsinProgress,
+  setRunStatus,
+  setActiveTab,
+  activeRunIdRef,
+}) {
+  const asinsArr = session.asins_data.map(a => ({ asin: a.asin, url: a.url }))
+  const progress = {}
+  for (const a of session.asins_data) {
+    progress[a.asin] = {
+      status: a.status === 'captured' ? 'complete' : a.status,
+      carouselCount: a.carouselCount,
+      aplusCount: a.aplusCount,
+    }
+  }
+  activeRunIdRef.current = session.server_run_id
+  setRunId(session.server_run_id)
+  setAsins(asinsArr)
+  setAsinProgress(progress)
+  setRunStatus('complete')
+  setActiveTab('results')
+}
+
+function manifestToSession(manifest) {
+  return {
+    server_run_id: manifest.runId,
+    asins_data: manifest.asins.map(a => ({
+      asin: a.asin,
+      url: a.url,
+      status: a.status,
+      carouselCount: a.carouselCount ?? 0,
+      aplusCount: a.aplusCount ?? 0,
+    })),
+  }
+}
+
 export default function GapAnalyzerView() {
   const [asins, setAsins] = useState([])
   const [runId, setRunId] = useState(null)
@@ -22,8 +70,15 @@ export default function GapAnalyzerView() {
   const [asinProgress, setAsinProgress] = useState({}) // asin -> { status, carouselCount, aplusCount }
   const [activeTab, setActiveTab] = useState('run') // 'run' | 'results'
   const [detailAsin, setDetailAsin] = useState(null) // ASIN open in full-page detail view
+  const [saveNotice, setSaveNotice] = useState(null) // null | 'saved' | { error: string }
   const logEndRef = useRef(null)
   const eventSourceRef = useRef(null)
+  const activeRunIdRef = useRef(null)
+  const asinsRef = useRef(asins)
+
+  useEffect(() => {
+    asinsRef.current = asins
+  }, [asins])
 
   // Auto-scroll log to bottom
   useEffect(() => {
@@ -35,25 +90,44 @@ export default function GapAnalyzerView() {
     return () => eventSourceRef.current?.close()
   }, [])
 
-  // Restore most recent completed run from Supabase on mount
+  const persistCompletedRun = useCallback(async (serverRunId, progress) => {
+    const asinsData = buildAsinsData(asinsRef.current, progress)
+    const result = await saveGapSession(serverRunId, asinsData)
+    if (result.ok) {
+      setSaveNotice('saved')
+    } else {
+      setSaveNotice({ error: result.error || 'Failed to save session' })
+    }
+  }, [])
+
+  // Restore most recent completed run from Supabase, then disk manifests
   useEffect(() => {
-    loadLatestGapSession().then(session => {
-      if (!session) return
-      const asinsArr = session.asins_data.map(a => ({ asin: a.asin, url: a.url }))
-      const progress = {}
-      for (const a of session.asins_data) {
-        progress[a.asin] = {
-          status: a.status === 'captured' ? 'complete' : a.status,
-          carouselCount: a.carouselCount,
-          aplusCount: a.aplusCount,
+    async function restore() {
+      let session = await loadLatestGapSession()
+      if (!session) {
+        try {
+          const res = await fetch(`${API}/runs`)
+          if (res.ok) {
+            const runs = await res.json()
+            if (runs.length > 0) {
+              session = manifestToSession(runs[0])
+            }
+          }
+        } catch (err) {
+          console.error('[gap_sessions] disk restore error:', err.message)
         }
       }
-      setRunId(session.server_run_id)
-      setAsins(asinsArr)
-      setAsinProgress(progress)
-      setRunStatus('complete')
-      setActiveTab('results')
-    })
+      if (!session) return
+      applySessionToState(session, {
+        setRunId,
+        setAsins,
+        setAsinProgress,
+        setRunStatus,
+        setActiveTab,
+        activeRunIdRef,
+      })
+    }
+    restore()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const appendLog = useCallback((entry) => {
@@ -100,16 +174,10 @@ export default function GapAnalyzerView() {
         setRunStatus(nextStatus)
         if (nextStatus === 'complete') {
           setActiveTab('results')
-          // Persist to Supabase using functional updater to read latest asinProgress
+          setSaveNotice(null)
+          const serverRunId = activeRunIdRef.current
           setAsinProgress(prev => {
-            const asinsData = asins.map(a => ({
-              asin: a.asin,
-              url: a.url,
-              status: prev[a.asin]?.status === 'complete' ? 'captured' : (prev[a.asin]?.status || 'error'),
-              carouselCount: prev[a.asin]?.carouselCount ?? 0,
-              aplusCount: prev[a.asin]?.aplusCount ?? 0,
-            }))
-            saveGapSession(runId, asinsData)
+            void persistCompletedRun(serverRunId, prev)
             return prev
           })
         }
@@ -126,6 +194,7 @@ export default function GapAnalyzerView() {
     setRunStatus('running')
     setLog([])
     setAsinProgress({})
+    setSaveNotice(null)
 
     try {
       const res = await fetch(`${API}/run`, {
@@ -139,6 +208,7 @@ export default function GapAnalyzerView() {
         setRunStatus('error')
         return
       }
+      activeRunIdRef.current = id
       setRunId(id)
       connectStream(id)
     } catch (err) {
@@ -378,6 +448,20 @@ export default function GapAnalyzerView() {
 
         {activeTab === 'results' && (
           <GapResultErrorBoundary>
+            {saveNotice && (
+              <div style={{
+                flexShrink: 0,
+                padding: '0.4rem 1rem',
+                borderBottom: '1px solid var(--border)',
+                fontSize: '0.75em',
+                color: saveNotice === 'saved' ? 'var(--accent)' : '#c05820',
+                background: 'var(--bg-secondary)',
+              }}>
+                {saveNotice === 'saved'
+                  ? 'Session saved'
+                  : `Save failed: ${saveNotice.error}`}
+              </div>
+            )}
             <GapResultView
               runId={runId}
               asins={asins}

@@ -1,13 +1,20 @@
 import supabase from '../lib/supabase.js'
 
 export async function saveGapSession(serverRunId, asinsData) {
+  if (!serverRunId) {
+    return { ok: false, error: 'Missing run id' }
+  }
   const { error } = await supabase
     .from('gap_sessions')
     .upsert(
       { server_run_id: serverRunId, asins_data: asinsData, completed_at: new Date().toISOString() },
       { onConflict: 'server_run_id' }
     )
-  if (error) console.error('[gap_sessions] save error:', error.message)
+  if (error) {
+    console.error('[gap_sessions] save error:', error.message)
+    return { ok: false, error: error.message }
+  }
+  return { ok: true }
 }
 
 export async function loadLatestGapSession() {
@@ -16,7 +23,10 @@ export async function loadLatestGapSession() {
     .select('*')
     .order('completed_at', { ascending: false })
     .limit(1)
-    .single()
-  if (error) return null
+    .maybeSingle()
+  if (error) {
+    console.error('[gap_sessions] load error:', error.message)
+    return null
+  }
   return data
 }

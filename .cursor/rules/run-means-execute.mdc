@@ -1,0 +1,39 @@
+---
+description: When the user says run, execute it — SQL, migrations, app restart — do not defer to the user
+alwaysApply: true
+---
+
+# "Run" means execute — not document
+
+When the user says **run**, **execute**, **apply**, or **run it** (SQL, migration, schema, app, server), **you must perform the action in their environment**. Do not stop at adding a file to the repo or telling them to use a dashboard.
+
+## Required actions by request type
+
+| User says | You must |
+|-----------|----------|
+| Run this SQL / migration / schema | Execute on their Supabase project via **Supabase MCP** (`apply_migration` or `execute_sql`). Project id = ref from `VITE_SUPABASE_URL` in `.env` (e.g. `https://XXXX.supabase.co` → `XXXX`). |
+| Run / restart / rebuild the app | Stop ports 3001/5173 + Electron, then `npm run electron:dev` from project root. Wait for Express on :3001. |
+| Pull latest and run | `git fetch` + merge, `npm install` if deps changed, then rebuild/restart. Run any new `.sql` migrations on Supabase the same session. |
+
+## Forbidden unless user explicitly opts out
+
+- Adding `supabase/migrations/*.sql` only and saying "run this in the SQL Editor"
+- "You need to apply this migration yourself"
+- Assuming a file in the repo equals work done on the database
+
+## Exceptions (honor explicit user words)
+
+- "Pull only — do not build"
+- "Don't run on Supabase yet"
+- "Just show me the SQL"
+
+## Supabase execution order
+
+1. Read migration SQL from repo or user message.
+2. Call `apply_migration` (DDL) or `execute_sql` (queries) on the correct `project_id`.
+3. Confirm success (`list_tables` or a simple `SELECT` if needed).
+4. Tell the user it is **done**, not pending.
+
+## App execution order
+
+See also `restart-app-after-changes.mdc` — stop first, then build + launch.
