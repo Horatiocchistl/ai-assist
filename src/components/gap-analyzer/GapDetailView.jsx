@@ -268,11 +268,15 @@ function ProductDataPanel({ data }) {
   )
 }
 
-export default function GapDetailView({ asin, liveFiles = [], onBack }) {
+export default function GapDetailView({ asin, liveFiles = [], onBack, onViewComparison, onViewLlmAnalysis }) {
   const [imageUrls, setImageUrls] = useState({})
   const [productData, setProductData] = useState(null)
   const [lightbox, setLightbox] = useState(null)
   const [loading, setLoading] = useState(true)
+
+  // Determine if this ASIN has been analyzed (for showing LLM Analysis CTA)
+  // For now, always false until Phase 2 implements actual analysis tracking
+  const analyzed = false // TODO: Phase 2 - check if LLM analysis has run for this ASIN
 
   useEffect(() => {
     let cancelled = false
@@ -338,6 +342,42 @@ export default function GapDetailView({ asin, liveFiles = [], onBack }) {
         </span>
         {loading && (
           <span style={{ fontSize: '0.75em', color: 'var(--text-muted)', marginLeft: 'auto' }}>Loading…</span>
+        )}
+        {!loading && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={() => onViewComparison?.(asin)}
+              style={{
+                padding: '0.35rem 0.65rem',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                background: 'var(--bg-panel)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontSize: '0.75em',
+                fontWeight: 500,
+              }}
+            >
+              View Comparison
+            </button>
+            {analyzed && (
+              <button
+                onClick={() => onViewLlmAnalysis?.(asin)}
+                style={{
+                  padding: '0.35rem 0.65rem',
+                  border: 'none',
+                  borderRadius: 6,
+                  background: 'var(--accent)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '0.75em',
+                  fontWeight: 600,
+                }}
+              >
+                View LLM Analysis
+              </button>
+            )}
+          </div>
         )}
       </div>
 

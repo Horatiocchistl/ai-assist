@@ -5,6 +5,8 @@ import GapDetailView from './GapDetailView.jsx'
 import GapResultErrorBoundary from './GapResultErrorBoundary.jsx'
 import PreRunView from './PreRunView.jsx'
 import RunPlanSidebar from './RunPlanSidebar.jsx'
+import ComparisonView from './ComparisonView.jsx'
+import LlmAnalysisView from './LlmAnalysisView.jsx'
 import {
   saveGapSession,
   resolveLatestSession,
@@ -85,6 +87,8 @@ export default function GapAnalyzerView() {
   const [liveFiles, setLiveFiles] = useState([])
   const [activeTab, setActiveTab] = useState('prerun') // 'prerun' | 'run' | 'results'
   const [detailAsin, setDetailAsin] = useState(null) // ASIN open in full-page detail view
+  const [comparisonAsin, setComparisonAsin] = useState(null) // ASIN open in comparison view
+  const [llmAnalysisAsin, setLlmAnalysisAsin] = useState(null) // ASIN open in LLM analysis view
   const [saveNotice, setSaveNotice] = useState(null) // null | 'saved' | { error: string }
   const logEndRef = useRef(null)
   const eventSourceRef = useRef(null)
@@ -275,6 +279,35 @@ export default function GapAnalyzerView() {
     error:    { color: '#c05820',         label: 'Error' },
   }[runStatus] || { color: 'var(--border)', label: 'Idle' }
 
+  // Full-page comparison view
+  if (activeTab === 'results' && comparisonAsin) {
+    const plan = plans.find(p => p.asin === comparisonAsin)
+    return (
+      <GapResultErrorBoundary>
+        <ComparisonView
+          runId={runId}
+          asin={comparisonAsin}
+          liveFiles={liveFiles}
+          plan={plan}
+          onBack={() => setComparisonAsin(null)}
+        />
+      </GapResultErrorBoundary>
+    )
+  }
+
+  // Full-page LLM analysis view
+  if (activeTab === 'results' && llmAnalysisAsin) {
+    return (
+      <GapResultErrorBoundary>
+        <LlmAnalysisView
+          runId={runId}
+          asin={llmAnalysisAsin}
+          onBack={() => setLlmAnalysisAsin(null)}
+        />
+      </GapResultErrorBoundary>
+    )
+  }
+
   // Full-page ASIN detail view — takes over the entire window
   if (activeTab === 'results' && detailAsin) {
     return (
@@ -283,6 +316,14 @@ export default function GapAnalyzerView() {
           asin={detailAsin}
           liveFiles={liveFiles}
           onBack={() => setDetailAsin(null)}
+          onViewComparison={(asin) => {
+            setDetailAsin(null)
+            setComparisonAsin(asin)
+          }}
+          onViewLlmAnalysis={(asin) => {
+            setDetailAsin(null)
+            setLlmAnalysisAsin(asin)
+          }}
         />
       </GapResultErrorBoundary>
     )
