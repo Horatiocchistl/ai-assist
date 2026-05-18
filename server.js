@@ -718,7 +718,7 @@ function emitToRun(run, event) {
 
 // POST /api/gap-analyzer/run  — start a new run
 app.post('/api/gap-analyzer/run', async (req, res) => {
-  const { asins } = req.body
+  const { asins, engagementId } = req.body
   if (!Array.isArray(asins) || asins.length === 0) {
     return res.status(400).json({ error: 'asins array required' })
   }
@@ -735,6 +735,7 @@ app.post('/api/gap-analyzer/run', async (req, res) => {
   }
 
   const run = createRun(asins)
+  run.engagementId = engagementId || null
 
   // Import and start the orchestrator asynchronously — don't await
   ;(async () => {
@@ -747,6 +748,14 @@ app.post('/api/gap-analyzer/run', async (req, res) => {
         run.abortController.signal
       )
       run.status = 'complete'
+      try {
+        const { syncLiveCaptures } = await import('./browser-agent/sync-live-captures.js')
+        run.liveFiles = await syncLiveCaptures(run.runId)
+        emitToRun(run, { type: 'live_sync_complete', liveFiles: run.liveFiles })
+      } catch (syncErr) {
+        console.error('[gap-analyzer] live sync failed:', syncErr.message)
+        run.liveFiles = []
+      }
     } catch (err) {
       emitToRun(run, { type: 'log', level: 'error', msg: `Fatal run error: ${err.message}` })
       run.status = 'error'
@@ -841,6 +850,13 @@ app.get('/api/gap-analyzer/captures/:runId/:asin/:filename', (req, res) => {
   const filePath = path.join(__dirname, 'captures', runId, asin, filename)
   if (!fs.existsSync(filePath)) return res.status(404).end()
   res.sendFile(filePath)
+})
+
+// GET /api/gap-analyzer/run/:runId/live-files — live capture manifest from last sync
+app.get('/api/gap-analyzer/run/:runId/live-files', (req, res) => {
+  const run = gapRuns.get(req.params.runId)
+  if (run?.liveFiles) return res.json({ liveFiles: run.liveFiles })
+  res.json({ liveFiles: [] })
 })
 
 // GET /api/gap-analyzer/runs — list completed runs from disk, newest first

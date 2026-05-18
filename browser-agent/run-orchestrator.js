@@ -76,7 +76,7 @@ export async function runAnalysis(runId, asins, emit, signal) {
       break
     }
 
-    const { asin, url } = asins[i]
+    const { asin, url, planId } = asins[i]
     const outputDir = path.join(CAPTURES_ROOT, runId, asin)
     const logPrefix = `[${i + 1}/${asins.length}] ${asin}`
 
@@ -105,7 +105,7 @@ export async function runAnalysis(runId, asins, emit, signal) {
       continue
     }
 
-    const asinResult = { asin, url, text: null, carousel: [], aplus: [] }
+    const asinResult = { asin, url, planId: planId ?? null, text: null, carousel: [], aplus: [] }
 
     try {
       // Step 1: Probe the page
@@ -177,6 +177,7 @@ export async function runAnalysis(runId, asins, emit, signal) {
     asins: results.map(r => ({
       asin: r.asin,
       url: r.url,
+      planId: r.planId ?? null,
       status: r.status,
       carouselCount: r.carousel?.length ?? 0,
       aplusCount: r.aplus?.length ?? 0,

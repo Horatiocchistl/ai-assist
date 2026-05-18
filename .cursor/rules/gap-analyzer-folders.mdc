@@ -1,0 +1,16 @@
+---
+description: Gap Analyzer folder layout — planned vs captures vs Supabase
+globs:
+  - browser-agent/**
+  - src/components/gap-analyzer/**
+  - gap-analyzer*.md
+---
+
+# Gap Analyzer folders
+
+Read [gap-analyzer-folder-structure.md](../../gap-analyzer-folder-structure.md) before changing capture paths or Pre-Run import.
+
+- **Planned assets** → Supabase `planned-assets` with **original consultant filenames**. No renaming to match live capture names.
+- **`captures/`** → live Results only during Run (Playwright output names are internal, not paired to planned by name).
+- **Gap compare** → vision LLM looks at planned vs live image sets; **never** pair by filename.
+- **Supabase** is source of truth for planned + live persistence.

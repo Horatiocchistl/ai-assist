@@ -1,10 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { ScanSearch, Play, Square, AlertCircle, CheckCircle, Loader } from 'lucide-react'
-import AsinManager from './AsinManager.jsx'
 import GapResultView from './GapResultView.jsx'
 import GapDetailView from './GapDetailView.jsx'
 import GapResultErrorBoundary from './GapResultErrorBoundary.jsx'
+import PreRunView from './PreRunView.jsx'
+import RunPlanSidebar from './RunPlanSidebar.jsx'
 import { saveGapSession, loadLatestGapSession } from '../../hooks/useGapSessions.js'
+import {
+  loadActiveEngagement,
+  loadPlans,
+  plansToRunAsins,
+  isPlanReady,
+} from '../../hooks/usePlannedEngagement.js'
 
 const API = '/api/gap-analyzer'
 
@@ -68,12 +75,17 @@ export default function GapAnalyzerView() {
   const [runStatus, setRunStatus] = useState('idle') // idle | running | complete | stopped | error
   const [log, setLog] = useState([])
   const [asinProgress, setAsinProgress] = useState({}) // asin -> { status, carouselCount, aplusCount }
-  const [activeTab, setActiveTab] = useState('run') // 'run' | 'results'
+  const [plans, setPlans] = useState([])
+  const [engagement, setEngagement] = useState(null)
+  const [liveFiles, setLiveFiles] = useState([])
+  const [activeTab, setActiveTab] = useState('prerun') // 'prerun' | 'run' | 'results'
   const [detailAsin, setDetailAsin] = useState(null) // ASIN open in full-page detail view
   const [saveNotice, setSaveNotice] = useState(null) // null | 'saved' | { error: string }
   const logEndRef = useRef(null)
   const eventSourceRef = useRef(null)
   const activeRunIdRef = useRef(null)
+  const liveFilesRef = useRef([])
+  const engagementRef = useRef(null)
   const asinsRef = useRef(asins)
 
   useEffect(() => {
@@ -90,9 +102,16 @@ export default function GapAnalyzerView() {
     return () => eventSourceRef.current?.close()
   }, [])
 
+  useEffect(() => {
+    engagementRef.current = engagement
+  }, [engagement])
+
   const persistCompletedRun = useCallback(async (serverRunId, progress) => {
     const asinsData = buildAsinsData(asinsRef.current, progress)
-    const result = await saveGapSession(serverRunId, asinsData)
+    const result = await saveGapSession(serverRunId, asinsData, {
+      engagementId: engagementRef.current?.id,
+      liveFiles: liveFilesRef.current,
+    })
     if (result.ok) {
       setSaveNotice('saved')
     } else {
@@ -100,34 +119,51 @@ export default function GapAnalyzerView() {
     }
   }, [])
 
-  // Restore most recent completed run from Supabase, then disk manifests
+  const handlePlansChange = useCallback((nextPlans, eng) => {
+    setPlans(nextPlans)
+    setEngagement(eng ?? null)
+    setAsins(plansToRunAsins(nextPlans))
+  }, [])
+
+  // Load plans + restore most recent completed run
   useEffect(() => {
-    async function restore() {
+    async function init() {
+      const eng = await loadActiveEngagement()
+      setEngagement(eng)
+      const loadedPlans = eng ? await loadPlans(eng.id) : []
+      setPlans(loadedPlans)
+      setAsins(plansToRunAsins(loadedPlans))
+
       let session = await loadLatestGapSession()
       if (!session) {
         try {
           const res = await fetch(`${API}/runs`)
           if (res.ok) {
             const runs = await res.json()
-            if (runs.length > 0) {
-              session = manifestToSession(runs[0])
-            }
+            if (runs.length > 0) session = manifestToSession(runs[0])
           }
         } catch (err) {
           console.error('[gap_sessions] disk restore error:', err.message)
         }
       }
-      if (!session) return
-      applySessionToState(session, {
-        setRunId,
-        setAsins,
-        setAsinProgress,
-        setRunStatus,
-        setActiveTab,
-        activeRunIdRef,
-      })
+      if (session) {
+        if (session.live_files?.length) {
+          liveFilesRef.current = session.live_files
+          setLiveFiles(session.live_files)
+        }
+        applySessionToState(session, {
+          setRunId,
+          setAsins,
+          setAsinProgress,
+          setRunStatus,
+          setActiveTab,
+          activeRunIdRef,
+        })
+      } else if (loadedPlans.length === 0) {
+        setActiveTab('prerun')
+      }
     }
-    restore()
+    init()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const appendLog = useCallback((entry) => {
@@ -169,6 +205,11 @@ export default function GapAnalyzerView() {
       case 'asin_blocked':
         setAsinProgress(prev => ({ ...prev, [event.asin]: { status: 'blocked', error: event.reason } }))
         break
+      case 'live_sync_complete': {
+        liveFilesRef.current = event.liveFiles || []
+        setLiveFiles(event.liveFiles || [])
+        break
+      }
       case 'run_status': {
         const nextStatus = event.status === 'complete' ? 'complete' : event.status === 'stopped' ? 'stopped' : 'error'
         setRunStatus(nextStatus)
@@ -189,8 +230,10 @@ export default function GapAnalyzerView() {
     }
   }
 
+  const runnableCount = plans.filter(isPlanReady).length
+
   async function handleRun() {
-    if (!asins.length || runStatus === 'running') return
+    if (!runnableCount || !asins.length || runStatus === 'running') return
     setRunStatus('running')
     setLog([])
     setAsinProgress({})
@@ -200,7 +243,7 @@ export default function GapAnalyzerView() {
       const res = await fetch(`${API}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ asins }),
+        body: JSON.stringify({ asins, engagementId: engagement?.id }),
       })
       const { runId: id, error } = await res.json()
       if (error) {
@@ -268,13 +311,7 @@ export default function GapAnalyzerView() {
         </div>
 
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <AsinManager
-            asins={asins}
-            onAdd={items => setAsins(prev => [...prev, ...items])}
-            onRemove={asin => setAsins(prev => prev.filter(a => a.asin !== asin))}
-            progress={asinProgress}
-            disabled={runStatus === 'running'}
-          />
+          <RunPlanSidebar plans={plans} progress={asinProgress} />
         </div>
 
         {/* Run / Stop controls */}
@@ -282,22 +319,28 @@ export default function GapAnalyzerView() {
           {runStatus !== 'running' ? (
             <button
               onClick={handleRun}
-              disabled={!asins.length}
+              disabled={!runnableCount}
               style={{
                 width: '100%',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
                 padding: '0.5rem',
-                background: asins.length ? 'var(--accent)' : 'var(--border)',
-                color: asins.length ? '#fff' : 'var(--text-muted)',
+                background: runnableCount ? 'var(--accent)' : 'var(--border)',
+                color: runnableCount ? '#fff' : 'var(--text-muted)',
                 border: 'none', borderRadius: 6,
-                cursor: asins.length ? 'pointer' : 'default',
+                cursor: runnableCount ? 'pointer' : 'default',
                 fontWeight: 600, fontSize: '0.85em',
               }}
             >
               <Play size={13} />
               Run Analysis
             </button>
-          ) : (
+          ) : null}
+          {runStatus !== 'running' && !runnableCount && (
+            <div style={{ fontSize: '0.68em', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: 1.4, textAlign: 'center' }}>
+              Pre-Run needs URL + images per product
+            </div>
+          )}
+          {runStatus === 'running' ? (
             <button
               onClick={handleStop}
               style={{
@@ -314,9 +357,9 @@ export default function GapAnalyzerView() {
               <Square size={13} />
               Stop Run
             </button>
-          )}
+          ) : null}
         </div>
-      </div>
+        </div>
 
       {/* RIGHT PANEL */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-center)' }}>
@@ -331,9 +374,15 @@ export default function GapAnalyzerView() {
           gap: '0.1rem',
           background: 'var(--bg-secondary)',
         }}>
-          {['run', 'results'].map(tab => {
+          {[
+            { id: 'prerun', label: 'Pre-Run' },
+            { id: 'run', label: 'Run' },
+            { id: 'results', label: 'Results' },
+          ].map(({ id: tab, label }) => {
             const isActive = activeTab === tab
-            const isDisabled = tab === 'results' && runStatus !== 'complete' && runStatus !== 'stopped'
+            const isDisabled =
+              (tab === 'run' && !plans.length) ||
+              (tab === 'results' && runStatus !== 'complete' && runStatus !== 'stopped')
             return (
               <button
                 key={tab}
@@ -350,11 +399,15 @@ export default function GapAnalyzerView() {
                   marginBottom: -1,
                 }}
               >
-                {tab === 'run' ? 'Run' : 'Results'}
+                {label}
               </button>
             )
           })}
         </div>
+
+        {activeTab === 'prerun' && (
+          <PreRunView onPlansChange={handlePlansChange} />
+        )}
 
         {activeTab === 'run' && <>
           {/* ASIN status row — shown once run starts */}
@@ -410,7 +463,9 @@ export default function GapAnalyzerView() {
           }}>
             {log.length === 0 && (
               <div style={{ color: 'var(--text-muted)', fontFamily: 'inherit', marginTop: '3rem', textAlign: 'center', lineHeight: 2 }}>
-                Add ASINs and hit Run Analysis to begin.
+                {plans.length
+                  ? 'Hit Run Analysis to capture live Amazon pages for your plans.'
+                  : 'Add plans in the Pre-Run tab, then run analysis here.'}
                 <br />
                 <span style={{ opacity: 0.6 }}>3–5 min per product · human-paced · headed Chromium</span>
               </div>
@@ -466,6 +521,7 @@ export default function GapAnalyzerView() {
               runId={runId}
               asins={asins}
               asinProgress={asinProgress}
+              liveFiles={liveFiles}
               onSelect={setDetailAsin}
             />
           </GapResultErrorBoundary>

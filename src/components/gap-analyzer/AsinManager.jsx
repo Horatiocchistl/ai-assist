@@ -1,17 +1,6 @@
 import React, { useState } from 'react'
 import { Plus, Trash2, ExternalLink, AlertCircle, CheckCircle, Loader } from 'lucide-react'
-
-function extractAsin(input) {
-  const trimmed = input.trim()
-  // Match /dp/XXXXXXXXXX in a URL
-  const dpMatch = trimmed.match(/\/dp\/([A-Z0-9]{10})/)
-  if (dpMatch) return { asin: dpMatch[1], url: trimmed }
-  // Match bare ASIN
-  if (/^[A-Z0-9]{10}$/.test(trimmed)) {
-    return { asin: trimmed, url: `https://www.amazon.com/dp/${trimmed}` }
-  }
-  return null
-}
+import { extractAsin } from '../../lib/extractAsin.js'
 
 function AsinStatusIcon({ status }) {
   if (status === 'complete') return <CheckCircle size={11} style={{ color: 'var(--accent)', flexShrink: 0 }} />

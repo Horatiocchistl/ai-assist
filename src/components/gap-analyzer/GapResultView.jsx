@@ -1,10 +1,51 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { CheckCircle, AlertCircle, Loader, Search } from 'lucide-react'
+import { firstLiveImagePath } from '../../hooks/useGapSessions.js'
+import { getLiveSignedUrl } from '../../hooks/usePlannedEngagement.js'
 
 const API = '/api/gap-analyzer'
 
-export default function GapResultView({ runId, asins, asinProgress, onSelect }) {
+export default function GapResultView({ runId, asins, asinProgress, liveFiles = [], onSelect }) {
   const [search, setSearch] = useState('')
+  const [thumbUrls, setThumbUrls] = useState({})
+  const [localThumbUrls, setLocalThumbUrls] = useState({})
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadSigned() {
+      const urls = {}
+      for (const { asin } of asins) {
+        const storagePath = firstLiveImagePath(liveFiles, asin)
+        if (storagePath) {
+          const signed = await getLiveSignedUrl(storagePath)
+          if (signed) urls[asin] = signed
+        }
+      }
+      if (!cancelled) setThumbUrls(urls)
+    }
+    loadSigned()
+    return () => { cancelled = true }
+  }, [asins, liveFiles])
+
+  useEffect(() => {
+    if (!runId) return
+    let cancelled = false
+    async function loadLocal() {
+      const urls = {}
+      for (const { asin } of asins) {
+        try {
+          const res = await fetch(`${API}/captures/${runId}/${asin}`)
+          if (!res.ok) continue
+          const { files } = await res.json()
+          const firstPng = (files || []).find(f => /\.png$/i.test(f))
+          if (firstPng) urls[asin] = `${API}/captures/${runId}/${asin}/${firstPng}`
+        } catch { /* skip */ }
+      }
+      if (!cancelled) setLocalThumbUrls(urls)
+    }
+    loadLocal()
+    return () => { cancelled = true }
+  }, [runId, asins])
 
   const filtered = asins.filter(({ asin }) =>
     asin.toLowerCase().includes(search.toLowerCase())
@@ -84,7 +125,7 @@ export default function GapResultView({ runId, asins, asinProgress, onSelect }) 
                 {runId && isClickable ? (
                   <img
                     loading="lazy"
-                    src={`${API}/captures/${runId}/${asin}/hero_viewport.png`}
+                    src={thumbUrls[asin] || localThumbUrls[asin] || ''}
                     alt=""
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     onError={e => { e.currentTarget.style.display = 'none' }}

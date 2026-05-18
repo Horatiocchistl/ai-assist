@@ -1,3 +1,4 @@
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
 const { app, BrowserWindow, dialog, ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
@@ -113,6 +114,53 @@ async function createWindow() {
     mainWindow = null
   })
 }
+
+ipcMain.handle('gap:pickPlannedFolder', async () => {
+  const win = BrowserWindow.getFocusedWindow() || mainWindow
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    properties: ['openDirectory'],
+    title: 'Choose planned engagement folder',
+  })
+  if (canceled || !filePaths?.[0]) return { canceled: true }
+  return { canceled: false, path: filePaths[0] }
+})
+
+function serializeImportRow(a) {
+  return {
+    asin: a.asin,
+    url: a.url,
+    folderName: a.folderName,
+    warnings: a.warnings,
+    txtFiles: a.txtFiles,
+    imageNames: a.imageNames,
+    ready: a.ready,
+    files: a.files.map(f => ({
+      kind: f.kind,
+      filename: f.filename,
+      label: f.label,
+      sort_index: f.sort_index,
+      mime: f.mime,
+      base64: f.buffer.toString('base64'),
+    })),
+  }
+}
+
+ipcMain.handle('gap:readPlannedFolder', async (_, folderPath) => {
+  if (!folderPath) return { error: 'No folder path' }
+  try {
+    const { readPlannedFolderForImport } = await import('../browser-agent/scan-planned-folder.js')
+    const data = await readPlannedFolderForImport(folderPath)
+    return {
+      name: data.name,
+      sourcePath: data.sourcePath,
+      asins: data.asins.map(serializeImportRow),
+      needsUrl: (data.needsUrl || []).map(serializeImportRow),
+      errors: data.errors,
+    }
+  } catch (err) {
+    return { error: err.message }
+  }
+})
 
 ipcMain.handle('reports:saveAs', async (_, { content, defaultFilename }) => {
   const win = BrowserWindow.getFocusedWindow() || mainWindow
