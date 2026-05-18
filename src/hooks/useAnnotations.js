@@ -8,7 +8,7 @@ import supabase from '../lib/supabase.js'
  * @returns {{annotations: Object, saveAnnotation: Function, loading: boolean}}
  */
 export function useAnnotations(runId, asin) {
-  const [annotations, setAnnotations] = useState({}) // section -> { note, severity }
+  const [annotations, setAnnotations] = useState({}) // section -> { note }
   const [loading, setLoading] = useState(true)
 
   // Load annotations for this run + ASIN on mount
@@ -36,7 +36,6 @@ export function useAnnotations(runId, asin) {
       for (const row of data || []) {
         annotationsMap[row.section] = {
           note: row.note,
-          severity: row.severity,
         }
       }
 
@@ -47,9 +46,9 @@ export function useAnnotations(runId, asin) {
     loadAnnotations()
   }, [runId, asin])
 
-  // Upsert annotation (debounced by caller)
+  // Upsert annotation
   const saveAnnotation = useCallback(
-    async (section, note, severity) => {
+    async (section, note) => {
       if (!runId || !asin || !section) return
 
       const { error } = await supabase
@@ -60,7 +59,6 @@ export function useAnnotations(runId, asin) {
             asin,
             section,
             note,
-            severity,
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'run_id,asin,section' }
@@ -74,7 +72,7 @@ export function useAnnotations(runId, asin) {
       // Update local state
       setAnnotations((prev) => ({
         ...prev,
-        [section]: { note, severity },
+        [section]: { note },
       }))
     },
     [runId, asin]

@@ -1,9 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { ArrowLeft } from 'lucide-react'
+import { MentionsInput, Mention } from 'react-mentions'
 import { useAnnotations } from '../../hooks/useAnnotations.js'
+import { useImageTags } from '../../hooks/useImageTags.js'
 import { getSignedUrl, sortPlanImages } from '../../hooks/usePlannedEngagement.js'
 import { getLiveSignedUrl } from '../../hooks/usePlannedEngagement.js'
 import { getAsinLiveFiles } from '../../hooks/useGapSessions.js'
+import TagSidebar from './TagSidebar.jsx'
 
 /**
  * Parse liveFiles to build section list
@@ -58,10 +61,48 @@ function buildSections(liveFiles) {
 }
 
 /**
+ * Image wrapper with tag icon
+ */
+function ImageWithTags({ src, alt, imageType, imageIndex, tagCount, onTagClick, style }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <img src={src} alt={alt} style={style} />
+      
+      {/* Tag icon button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onTagClick(imageType, imageIndex)
+        }}
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          background: 'rgba(0,0,0,0.7)',
+          border: 'none',
+          borderRadius: 4,
+          padding: '0.25rem 0.5rem',
+          color: '#fff',
+          fontSize: '0.7em',
+          cursor: 'pointer',
+          display: 'flex',
+          gap: '0.25rem',
+          alignItems: 'center',
+          fontWeight: 600
+        }}
+        title="Tag this image"
+      >
+        🏷️ {tagCount > 0 && tagCount}
+      </button>
+    </div>
+  )
+}
+
+/**
  * Structured page view matching Amazon product page layout
  * @param {Array} imageData - Array of {url, filename} objects
  */
-function PageViewImages({ imageData }) {
+function PageViewImages({ imageData, getImageTags, onTagClick }) {
   // Categorize images by type
   const hero = imageData.find(img => img.filename === 'hero_viewport.png')
   
@@ -85,9 +126,13 @@ function PageViewImages({ imageData }) {
           <div style={{ fontSize: '0.7em', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600 }}>
             Hero
           </div>
-          <img
+          <ImageWithTags
             src={hero.url}
             alt="Hero"
+            imageType="live"
+            imageIndex={null}
+            tagCount={getImageTags('live', null).length}
+            onTagClick={onTagClick}
             style={{ width: '100%', objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 6 }}
           />
         </div>
@@ -105,11 +150,15 @@ function PageViewImages({ imageData }) {
             gap: '0.5rem' 
           }}>
             {carousel.map((img, idx) => (
-              <div key={idx} style={{ aspectRatio: '1', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 4 }}>
-                <img
+              <div key={idx} style={{ aspectRatio: '1', overflow: 'hidden', borderRadius: 4 }}>
+                <ImageWithTags
                   src={img.url}
                   alt={`Carousel ${idx + 1}`}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  imageType="live"
+                  imageIndex={idx}
+                  tagCount={getImageTags('live', idx).length}
+                  onTagClick={onTagClick}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', border: '1px solid var(--border)' }}
                 />
               </div>
             ))}
@@ -123,14 +172,20 @@ function PageViewImages({ imageData }) {
           <div style={{ fontSize: '0.7em', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600 }}>
             Page Scroll ({scrolls.length})
           </div>
-          {scrolls.map((img, idx) => (
-            <img
-              key={idx}
-              src={img.url}
-              alt={`Scroll ${idx + 1}`}
-              style={{ width: '100%', objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4, marginBottom: '0.5rem' }}
-            />
-          ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {scrolls.map((img, idx) => (
+              <ImageWithTags
+                key={idx}
+                src={img.url}
+                alt={`Scroll ${idx + 1}`}
+                imageType="live"
+                imageIndex={idx + 100} // offset to distinguish from carousel
+                tagCount={getImageTags('live', idx + 100).length}
+                onTagClick={onTagClick}
+                style={{ width: '100%', objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }}
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -145,9 +200,13 @@ function PageViewImages({ imageData }) {
               <div style={{ fontSize: '0.65em', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
                 Module {idx + 1}
               </div>
-              <img
+              <ImageWithTags
                 src={img.url}
                 alt={`A+ Module ${idx + 1}`}
+                imageType="live"
+                imageIndex={idx + 200} // offset to distinguish from carousel/scroll
+                tagCount={getImageTags('live', idx + 200).length}
+                onTagClick={onTagClick}
                 style={{ width: '100%', objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }}
               />
             </div>
@@ -163,6 +222,12 @@ export default function ComparisonView({ runId, asin, liveFiles, plan, onBack })
   const [activeSection, setActiveSection] = useState(null)
   const [liveImageUrl, setLiveImageUrl] = useState(null)
   const [plannedImageUrls, setPlannedImageUrls] = useState([])
+  const [localNote, setLocalNote] = useState('')
+  
+  // Tag management
+  const [tagSidebar, setTagSidebar] = useState({ open: false, imageType: null, imageIndex: null })
+  const [notesExpanded, setNotesExpanded] = useState(false)
+  const { tags, addTag, removeTag, getImageTags, isLinkedTag, allUniqueTags } = useImageTags(runId, asin, activeSection)
   
   const sections = useMemo(() => {
     const asinFiles = getAsinLiveFiles(liveFiles, asin)
@@ -175,6 +240,14 @@ export default function ComparisonView({ runId, asin, liveFiles, plan, onBack })
       setActiveSection(sections[0].id)
     }
   }, [sections, activeSection])
+
+  // Sync localNote with annotations when section changes
+  useEffect(() => {
+    if (activeSection) {
+      const currentAnnotation = annotations[activeSection]
+      setLocalNote(currentAnnotation?.note || '')
+    }
+  }, [activeSection, annotations])
 
   // Load images for active section
   useEffect(() => {
@@ -231,14 +304,39 @@ export default function ComparisonView({ runId, asin, liveFiles, plan, onBack })
     loadImages()
   }, [activeSection, sections, plan, liveFiles, asin])
 
-  const currentAnnotation = annotations[activeSection] || { note: '', severity: null }
+  const currentAnnotation = annotations[activeSection] || { note: '' }
 
-  const handleNoteChange = (note) => {
-    saveAnnotation(activeSection, note, currentAnnotation.severity)
+  // Prepare tags for mentions
+  const mentionTags = useMemo(() => {
+    const uniqueTags = allUniqueTags()
+    return uniqueTags.map(tag => ({ id: tag, display: tag }))
+  }, [allUniqueTags])
+
+  const handleNoteChange = (e, newValue) => {
+    // MentionsInput passes (event, newValue, newPlainTextValue, mentions)
+    setLocalNote(newValue)
   }
 
-  const handleSeverityChange = (severity) => {
-    saveAnnotation(activeSection, currentAnnotation.note, severity)
+  const handleSaveNote = () => {
+    saveAnnotation(activeSection, localNote)
+  }
+
+  const handleTagClick = (imageType, imageIndex) => {
+    setTagSidebar({ open: true, imageType, imageIndex })
+  }
+
+  const handleCloseSidebar = () => {
+    setTagSidebar({ open: false, imageType: null, imageIndex: null })
+  }
+
+  const handleAddTag = async (imageType, imageIndex, tag) => {
+    const result = await addTag(imageType, imageIndex, tag)
+    return result
+  }
+
+  const handleRemoveTag = async (tagId) => {
+    const result = await removeTag(tagId)
+    return result
   }
 
   return (
@@ -342,12 +440,20 @@ export default function ComparisonView({ runId, asin, liveFiles, plan, onBack })
           }}>
             {liveImageUrl?.imageData ? (
               // Page view - structured layout matching Amazon
-              <PageViewImages imageData={liveImageUrl.imageData} />
+              <PageViewImages 
+                imageData={liveImageUrl.imageData} 
+                getImageTags={getImageTags}
+                onTagClick={handleTagClick}
+              />
             ) : liveImageUrl && typeof liveImageUrl === 'string' ? (
               // Individual section - single image
-              <img
+              <ImageWithTags
                 src={liveImageUrl}
                 alt="Live capture"
+                imageType="live"
+                imageIndex={null}
+                tagCount={getImageTags('live', null).length}
+                onTagClick={handleTagClick}
                 style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
               />
             ) : (
@@ -381,10 +487,14 @@ export default function ComparisonView({ runId, asin, liveFiles, plan, onBack })
           }}>
             {plannedImageUrls.length > 0 ? (
               plannedImageUrls.map((url, idx) => (
-                <img
+                <ImageWithTags
                   key={idx}
                   src={url}
                   alt={`Planned ${idx + 1}`}
+                  imageType="planned"
+                  imageIndex={idx}
+                  tagCount={getImageTags('planned', idx).length}
+                  onTagClick={handleTagClick}
                   style={{ maxWidth: '100%', objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }}
                 />
               ))
@@ -404,56 +514,222 @@ export default function ComparisonView({ runId, asin, liveFiles, plan, onBack })
         display: 'flex',
         flexDirection: 'column',
         gap: '0.75rem',
+        position: 'relative'
       }}>
-        <textarea
-          value={currentAnnotation.note || ''}
-          onChange={(e) => handleNoteChange(e.target.value)}
-          onBlur={(e) => handleNoteChange(e.target.value)}
-          placeholder="Add notes about this section..."
-          style={{
-            width: '100%',
-            minHeight: 60,
-            padding: '0.5rem',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            background: 'var(--bg-panel)',
-            color: 'var(--text-primary)',
-            fontSize: '0.8em',
-            fontFamily: 'inherit',
-            resize: 'vertical',
-          }}
-        />
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.75em', color: 'var(--text-muted)', fontWeight: 600 }}>Severity:</span>
-          {['critical', 'warning', 'ok'].map((sev) => {
-            const active = currentAnnotation.severity === sev
-            const colors = {
-              critical: { bg: '#c05820', text: '#fff' },
-              warning: { bg: '#e0a040', text: '#fff' },
-              ok: { bg: 'var(--accent)', text: '#fff' },
-            }
-            return (
-              <button
-                key={sev}
-                onClick={() => handleSeverityChange(sev)}
+        {/* Expanded overlay */}
+        {notesExpanded && (
+          <div style={{
+            position: 'absolute',
+            bottom: '100%',
+            left: 0,
+            right: 0,
+            background: 'var(--bg-secondary)',
+            borderTop: '1px solid var(--border)',
+            padding: '1rem',
+            maxHeight: '50vh',
+            overflowY: 'auto',
+            boxShadow: '0 -4px 12px rgba(0,0,0,0.1)',
+            zIndex: 10
+          }}>
+            <div style={{ marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75em', fontWeight: 600, color: 'var(--text-muted)' }}>
+                Expanded Notes
+              </span>
+              <button 
+                onClick={() => setNotesExpanded(false)}
                 style={{
-                  padding: '0.35rem 0.75rem',
-                  border: active ? 'none' : '1px solid var(--border)',
-                  borderRadius: 6,
-                  background: active ? colors[sev].bg : 'var(--bg-panel)',
-                  color: active ? colors[sev].text : 'var(--text-primary)',
+                  padding: '0.25rem 0.5rem',
+                  border: '1px solid var(--border)',
+                  borderRadius: 4,
+                  background: 'var(--bg-panel)',
+                  color: 'var(--text-primary)',
                   cursor: 'pointer',
-                  fontSize: '0.75em',
-                  fontWeight: active ? 600 : 400,
-                  textTransform: 'capitalize',
+                  fontSize: '0.75em'
                 }}
               >
-                {sev}
+                Collapse ↓
               </button>
-            )
-          })}
-        </div>
+            </div>
+            <MentionsInput
+              value={localNote}
+              onChange={handleNoteChange}
+              placeholder="Add notes about this section... Use @tagname to reference tags."
+              style={{
+                control: {
+                  width: '100%',
+                  minHeight: 250,
+                  fontSize: '0.8em',
+                  fontFamily: 'inherit',
+                },
+                input: {
+                  padding: '0.5rem',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  background: 'var(--bg-panel)',
+                  color: 'var(--text-primary)',
+                  minHeight: 250,
+                  overflow: 'auto',
+                },
+                highlighter: {
+                  padding: '0.5rem',
+                  border: '1px solid transparent',
+                  minHeight: 250,
+                  overflow: 'hidden',
+                },
+                suggestions: {
+                  list: {
+                    background: 'var(--bg-panel)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    fontSize: '0.8em',
+                  },
+                  item: {
+                    padding: '0.35rem 0.5rem',
+                    '&focused': {
+                      background: 'var(--accent)',
+                      color: '#fff',
+                    },
+                  },
+                },
+              }}
+            >
+              <Mention
+                trigger="@"
+                data={mentionTags}
+                displayTransform={(id) => `@${id}`}
+                markup="@__id__"
+                style={{
+                  backgroundColor: '#e3f2fd',
+                  borderRadius: 3,
+                  padding: '0 2px',
+                }}
+              />
+            </MentionsInput>
+            <button
+              onClick={handleSaveNote}
+              style={{
+                marginTop: '0.5rem',
+                padding: '0.4rem 0.9rem',
+                border: 'none',
+                borderRadius: 6,
+                background: 'var(--accent)',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '0.8em',
+                fontWeight: 600,
+              }}
+            >
+              Save
+            </button>
+          </div>
+        )}
+
+        {/* Collapsed state */}
+        {!notesExpanded && (
+          <>
+            <MentionsInput
+              value={localNote}
+              onChange={handleNoteChange}
+              placeholder="Add notes about this section... Use @tagname to reference tags."
+              style={{
+                control: {
+                  width: '100%',
+                  minHeight: 60,
+                  fontSize: '0.8em',
+                  fontFamily: 'inherit',
+                },
+                input: {
+                  padding: '0.5rem',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  background: 'var(--bg-panel)',
+                  color: 'var(--text-primary)',
+                  minHeight: 60,
+                  overflow: 'auto',
+                },
+                highlighter: {
+                  padding: '0.5rem',
+                  border: '1px solid transparent',
+                  minHeight: 60,
+                  overflow: 'hidden',
+                },
+                suggestions: {
+                  list: {
+                    background: 'var(--bg-panel)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    fontSize: '0.8em',
+                  },
+                  item: {
+                    padding: '0.35rem 0.5rem',
+                    '&focused': {
+                      background: 'var(--accent)',
+                      color: '#fff',
+                    },
+                  },
+                },
+              }}
+            >
+              <Mention
+                trigger="@"
+                data={mentionTags}
+                displayTransform={(id) => `@${id}`}
+                markup="@__id__"
+                style={{
+                  backgroundColor: '#e3f2fd',
+                  borderRadius: 3,
+                  padding: '0 2px',
+                }}
+              />
+            </MentionsInput>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                onClick={handleSaveNote}
+                style={{
+                  padding: '0.4rem 0.9rem',
+                  border: 'none',
+                  borderRadius: 6,
+                  background: 'var(--accent)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '0.8em',
+                  fontWeight: 600,
+                }}
+              >
+                Save
+              </button>
+              <button 
+                onClick={() => setNotesExpanded(true)}
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  background: 'var(--bg-panel)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontSize: '0.75em',
+                  fontWeight: 500,
+                }}
+              >
+                Expand Notes ↑
+              </button>
+            </div>
+          </>
+        )}
       </div>
+
+      {/* Tag Sidebar */}
+      <TagSidebar
+        open={tagSidebar.open}
+        onClose={handleCloseSidebar}
+        imageType={tagSidebar.imageType}
+        imageIndex={tagSidebar.imageIndex}
+        existingTags={tagSidebar.open ? getImageTags(tagSidebar.imageType, tagSidebar.imageIndex) : []}
+        allTags={allUniqueTags()}
+        onAddTag={handleAddTag}
+        onRemoveTag={handleRemoveTag}
+        isLinkedTag={isLinkedTag}
+      />
     </div>
   )
 }
