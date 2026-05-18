@@ -5,13 +5,18 @@ import GapDetailView from './GapDetailView.jsx'
 import GapResultErrorBoundary from './GapResultErrorBoundary.jsx'
 import PreRunView from './PreRunView.jsx'
 import RunPlanSidebar from './RunPlanSidebar.jsx'
-import { saveGapSession, loadLatestGapSession } from '../../hooks/useGapSessions.js'
+import {
+  saveGapSession,
+  resolveLatestSession,
+  buildAsinsDataFromProgress,
+} from '../../hooks/useGapSessions.js'
 import {
   loadActiveEngagement,
   loadPlans,
   plansToRunAsins,
   isPlanReady,
 } from '../../hooks/usePlannedEngagement.js'
+import { getGapApiBase } from '../../lib/gapApi.js'
 
 const API = '/api/gap-analyzer'
 
@@ -87,6 +92,7 @@ export default function GapAnalyzerView() {
   const liveFilesRef = useRef([])
   const engagementRef = useRef(null)
   const asinsRef = useRef(asins)
+  const hasRestoredRunRef = useRef(false)
 
   useEffect(() => {
     asinsRef.current = asins
@@ -107,7 +113,7 @@ export default function GapAnalyzerView() {
   }, [engagement])
 
   const persistCompletedRun = useCallback(async (serverRunId, progress) => {
-    const asinsData = buildAsinsData(asinsRef.current, progress)
+    const asinsData = buildAsinsDataFromProgress(progress, asinsRef.current)
     const result = await saveGapSession(serverRunId, asinsData, {
       engagementId: engagementRef.current?.id,
       liveFiles: liveFilesRef.current,
@@ -122,7 +128,9 @@ export default function GapAnalyzerView() {
   const handlePlansChange = useCallback((nextPlans, eng) => {
     setPlans(nextPlans)
     setEngagement(eng ?? null)
-    setAsins(plansToRunAsins(nextPlans))
+    if (!hasRestoredRunRef.current) {
+      setAsins(plansToRunAsins(nextPlans))
+    }
   }, [])
 
   // Load plans + restore most recent completed run
@@ -132,25 +140,12 @@ export default function GapAnalyzerView() {
       setEngagement(eng)
       const loadedPlans = eng ? await loadPlans(eng.id) : []
       setPlans(loadedPlans)
-      setAsins(plansToRunAsins(loadedPlans))
 
-      let session = await loadLatestGapSession()
-      if (!session) {
-        try {
-          const res = await fetch(`${API}/runs`)
-          if (res.ok) {
-            const runs = await res.json()
-            if (runs.length > 0) session = manifestToSession(runs[0])
-          }
-        } catch (err) {
-          console.error('[gap_sessions] disk restore error:', err.message)
-        }
-      }
+      const session = await resolveLatestSession()
       if (session) {
-        if (session.live_files?.length) {
-          liveFilesRef.current = session.live_files
-          setLiveFiles(session.live_files)
-        }
+        hasRestoredRunRef.current = true
+        liveFilesRef.current = session.live_files || []
+        setLiveFiles(session.live_files || [])
         applySessionToState(session, {
           setRunId,
           setAsins,
@@ -159,8 +154,10 @@ export default function GapAnalyzerView() {
           setActiveTab,
           activeRunIdRef,
         })
-      } else if (loadedPlans.length === 0) {
-        setActiveTab('prerun')
+      } else {
+        hasRestoredRunRef.current = false
+        setAsins(plansToRunAsins(loadedPlans))
+        if (loadedPlans.length === 0) setActiveTab('prerun')
       }
     }
     init()
@@ -172,7 +169,7 @@ export default function GapAnalyzerView() {
 
   function connectStream(id) {
     eventSourceRef.current?.close()
-    const es = new EventSource(`${API}/run/${id}/stream`)
+    const es = new EventSource(`${getGapApiBase()}/run/${id}/stream`)
     eventSourceRef.current = es
 
     es.onmessage = (e) => {
@@ -234,13 +231,14 @@ export default function GapAnalyzerView() {
 
   async function handleRun() {
     if (!runnableCount || !asins.length || runStatus === 'running') return
+    hasRestoredRunRef.current = false
     setRunStatus('running')
     setLog([])
     setAsinProgress({})
     setSaveNotice(null)
 
     try {
-      const res = await fetch(`${API}/run`, {
+      const res = await fetch(`${getGapApiBase()}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ asins, engagementId: engagement?.id }),
@@ -263,7 +261,7 @@ export default function GapAnalyzerView() {
   async function handleStop() {
     if (!runId || runStatus !== 'running') return
     try {
-      await fetch(`${API}/run/${runId}/stop`, { method: 'POST' })
+      await fetch(`${getGapApiBase()}/run/${runId}/stop`, { method: 'POST' })
     } catch { /* ignore */ }
     setRunStatus('stopped')
     eventSourceRef.current?.close()
@@ -282,8 +280,8 @@ export default function GapAnalyzerView() {
     return (
       <GapResultErrorBoundary>
         <GapDetailView
-          runId={runId}
           asin={detailAsin}
+          liveFiles={liveFiles}
           onBack={() => setDetailAsin(null)}
         />
       </GapResultErrorBoundary>
@@ -518,7 +516,6 @@ export default function GapAnalyzerView() {
               </div>
             )}
             <GapResultView
-              runId={runId}
               asins={asins}
               asinProgress={asinProgress}
               liveFiles={liveFiles}

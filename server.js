@@ -819,7 +819,7 @@ app.post('/api/gap-analyzer/run/:runId/stop', (req, res) => {
   res.json({ status: 'stopped' })
 })
 
-// GET /api/gap-analyzer/captures/:runId/:asin  — list captured files + product data
+// GET /api/gap-analyzer/captures/:runId/:asin  — staging only (during run); Results UI reads Supabase live-captures
 app.get('/api/gap-analyzer/captures/:runId/:asin', (req, res) => {
   const { runId, asin } = req.params
   if ([runId, asin].some(p => p.includes('..') || p.includes('/'))) {

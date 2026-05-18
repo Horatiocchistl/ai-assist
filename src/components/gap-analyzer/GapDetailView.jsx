@@ -1,13 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { ArrowLeft, X } from 'lucide-react'
+import { getAsinLiveFiles } from '../../hooks/useGapSessions.js'
+import { getLiveSignedUrl } from '../../hooks/usePlannedEngagement.js'
 
-const API = '/api/gap-analyzer'
-
-function imgUrl(runId, asin, filename) {
-  return `${API}/captures/${runId}/${asin}/${filename}`
-}
-
-// ── Safe rendering helpers ────────────────────────────────────────────────────
+const IMAGE_RE = /\.(png|jpe?g|webp)$/i
 
 function safeStr(v) {
   if (v == null) return null
@@ -19,8 +15,6 @@ function safeStr(v) {
 function safeArr(v) {
   return Array.isArray(v) ? v.filter(x => x != null) : []
 }
-
-// ── Lightbox ──────────────────────────────────────────────────────────────────
 
 function Lightbox({ src, onClose }) {
   useEffect(() => {
@@ -59,8 +53,6 @@ function Lightbox({ src, onClose }) {
   )
 }
 
-// ── Screenshot panel ──────────────────────────────────────────────────────────
-
 function SectionLabel({ children }) {
   return (
     <div style={{
@@ -75,29 +67,34 @@ function SectionLabel({ children }) {
   )
 }
 
-function ScreenshotPanel({ runId, asin, files, onLightbox }) {
-  const hero     = files.find(f => f === 'hero_viewport.png')
-  const carousel = files.filter(f => /^carousel_\d+/.test(f)).sort()
-  const scrolls  = files.filter(f => /^scroll_/.test(f)).sort()
-  const aplus    = files.filter(f => /^aplus_\d+/.test(f)).sort()
+function ScreenshotPanel({ imageUrls, onLightbox }) {
+  const filenames = Object.keys(imageUrls).filter(f => IMAGE_RE.test(f)).sort()
+  const hero     = filenames.find(f => f === 'hero_viewport.png')
+  const carousel = filenames.filter(f => /^carousel_\d+/.test(f)).sort()
+  const scrolls  = filenames.filter(f => /^scroll_/.test(f)).sort()
+  const aplus    = filenames.filter(f => /^aplus_\d+/.test(f)).sort()
 
-  const clickableImg = (filename, extra = {}) => (
-    <img
-      key={filename}
-      loading="lazy"
-      src={imgUrl(runId, asin, filename)}
-      alt={filename}
-      onClick={() => onLightbox(imgUrl(runId, asin, filename))}
-      style={{
-        cursor: 'zoom-in',
-        border: '1px solid var(--border)',
-        borderRadius: 4,
-        objectFit: 'contain',
-        background: '#fff',
-        ...extra,
-      }}
-    />
-  )
+  const clickableImg = (filename, extra = {}) => {
+    const src = imageUrls[filename]
+    if (!src) return null
+    return (
+      <img
+        key={filename}
+        loading="lazy"
+        src={src}
+        alt={filename}
+        onClick={() => onLightbox(src)}
+        style={{
+          cursor: 'zoom-in',
+          border: '1px solid var(--border)',
+          borderRadius: 4,
+          objectFit: 'contain',
+          background: '#fff',
+          ...extra,
+        }}
+      />
+    )
+  }
 
   const scrollLabel = (f) => {
     const m = f.match(/scroll_(\d+)pct/)
@@ -147,16 +144,14 @@ function ScreenshotPanel({ runId, asin, files, onLightbox }) {
         ))}
       </>}
 
-      {files.length === 0 && (
+      {filenames.length === 0 && (
         <div style={{ color: 'var(--text-muted)', fontSize: '0.8em', paddingTop: '2rem', textAlign: 'center' }}>
-          No screenshots captured.
+          No screenshots in Supabase for this ASIN.
         </div>
       )}
     </div>
   )
 }
-
-// ── Product data panel ────────────────────────────────────────────────────────
 
 function DataRow({ label, children }) {
   return (
@@ -189,7 +184,6 @@ function ProductDataPanel({ data }) {
 
   return (
     <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0' }}>
-
       <SectionLabel>Overview</SectionLabel>
       {safeStr(data.title)  && <DataRow label="Title">{safeStr(data.title)}</DataRow>}
       {safeStr(data.brand)  && <DataRow label="Brand">{safeStr(data.brand)}</DataRow>}
@@ -274,26 +268,49 @@ function ProductDataPanel({ data }) {
   )
 }
 
-// ── Detail view ───────────────────────────────────────────────────────────────
-
-export default function GapDetailView({ runId, asin, onBack }) {
-  const [captureData, setCaptureData] = useState(null)
+export default function GapDetailView({ asin, liveFiles = [], onBack }) {
+  const [imageUrls, setImageUrls] = useState({})
+  const [productData, setProductData] = useState(null)
   const [lightbox, setLightbox] = useState(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!runId || !asin) return
-    fetch(`${API}/captures/${runId}/${asin}`)
-      .then(r => r.json())
-      .then(setCaptureData)
-      .catch(() => {})
-  }, [runId, asin])
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      const files = getAsinLiveFiles(liveFiles, asin)
+      const urls = {}
+      let pd = null
 
-  const files = safeArr(captureData?.files).filter(f => typeof f === 'string')
+      for (const f of files) {
+        if (!f.path) continue
+        if (IMAGE_RE.test(f.filename)) {
+          const signed = await getLiveSignedUrl(f.path)
+          if (signed) urls[f.filename] = signed
+        } else if (f.filename === 'product-data.json') {
+          const signed = await getLiveSignedUrl(f.path)
+          if (signed) {
+            try {
+              const res = await fetch(signed)
+              if (res.ok) pd = await res.json()
+            } catch { /* skip */ }
+          }
+        }
+      }
+
+      if (!cancelled) {
+        setImageUrls(urls)
+        setProductData(pd)
+        setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [asin, liveFiles])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', background: 'var(--bg-primary)' }}>
 
-      {/* Top bar */}
       <div style={{
         flexShrink: 0,
         height: 44,
@@ -319,24 +336,17 @@ export default function GapDetailView({ runId, asin, onBack }) {
         <span style={{ fontFamily: 'monospace', fontSize: '0.85em', fontWeight: 600, color: 'var(--text-primary)' }}>
           {asin}
         </span>
+        {loading && (
+          <span style={{ fontSize: '0.75em', color: 'var(--text-muted)', marginLeft: 'auto' }}>Loading…</span>
+        )}
       </div>
 
-      {/* Two-panel body */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-
-        {/* Left — screenshots */}
         <div style={{ flex: '0 0 58%', overflowY: 'auto', borderRight: '1px solid var(--border)' }}>
-          <ScreenshotPanel
-            runId={runId}
-            asin={asin}
-            files={files}
-            onLightbox={setLightbox}
-          />
+          <ScreenshotPanel imageUrls={imageUrls} onLightbox={setLightbox} />
         </div>
-
-        {/* Right — product data */}
         <div style={{ flex: '0 0 42%', overflowY: 'auto' }}>
-          <ProductDataPanel data={captureData?.productData ?? null} />
+          <ProductDataPanel data={productData} />
         </div>
       </div>
 

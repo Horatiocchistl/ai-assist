@@ -35,6 +35,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
+    "animejs": "^4.4.1",
     "apify-client": "^2.23.3",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
@@ -50,6 +51,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.1",
     "tree-kill": "^1.2.2",
     "xlsx": "^0.18.5"
   },

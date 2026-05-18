@@ -80,12 +80,12 @@ const SKILL_TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'get_weather',
-      description: 'Get weather and forecast for a location. Use forecast_days (1-16) when the user asks about a future date within 16 days.',
+      description: 'REQUIRED for all weather questions — the only allowed method. Pass location exactly as the user provided: use their zip if they gave a zip; use "City, ST" if they gave both; never shorten to city name alone when they gave more. If only an ambiguous city name, ask for state/zip before calling. On failure, tell the user the exact tool error text (do not invent weather).',
       parameters: {
         type: 'object',
         required: ['location'],
         properties: {
-          location: { type: 'string', description: 'City name, zip code, or lat,lon coordinates' },
+          location: { type: 'string', description: 'Verbatim location from the user: zip code, "City, State", or lat,lon — do not guess or simplify' },
           format: { type: 'string', enum: ['json', 'human'], description: 'Output format (default json)' },
           forecast_days: { type: 'integer', description: 'Forecast length 1-16 days (default 7). Increase to include a future date.' },
         },
@@ -125,6 +125,14 @@ const PROJECT_TOOL_DEFS = [
 
 export const SKILL_TOOLS = [...SKILL_TOOL_DEFS]
 export const ALL_TOOLS = [...SKILL_TOOL_DEFS, ...PROJECT_TOOL_DEFS]
+
+export const KNOWN_TOOL_NAMES = ALL_TOOLS.map(t => t.function.name)
+
+const DOCUMENT_REQUEST_RE = /\b(document|report|markdown|as a doc|write up|breakdown)\b/i
+
+export function isDocumentRequest(text) {
+  return DOCUMENT_REQUEST_RE.test(text || '')
+}
 
 // --- Skill executors ---
 

@@ -7,7 +7,7 @@ import Sidebar from './components/Sidebar.jsx'
 import { useConversations } from './hooks/useConversations.js'
 import { useProjects, formatRelevantKnowledge } from './hooks/useProjects.js'
 import { useOllama } from './hooks/useOllama.js'
-import { ALL_TOOLS, SKILL_TOOLS } from './lib/tools.js'
+import { ALL_TOOLS, SKILL_TOOLS, isDocumentRequest } from './lib/tools.js'
 import SkillDirsModal from './components/SkillDirsModal.jsx'
 import ReportPreviewPanel from './components/ReportPreviewPanel.jsx'
 import ChatsView from './components/ChatsView.jsx'
@@ -27,8 +27,8 @@ You have access to these tools — use them when relevant:
 Rules:
 - When the user references a skill with /skill_name, ALWAYS call read_skill with that name to load it.
 - When asked about available skills or what you can do, call list_skills.
-- When a skill has scripts listed in its resources, use run_script to execute them when relevant.
-- For weather questions, call get_weather with location (required). For a future date within 16 days, set forecast_days high enough to include that day. Never guess weather.
+- When a skill has scripts listed in its resources, use run_script to execute them when relevant (never for weather).
+- Weather: read_skill('weather') when using /weather, then call get_weather only — no memory, no run_script, no fake tool text in chat. Pass the user's location verbatim (zip if given, full city+state if given). If only an ambiguous city name, ask for state or zip before calling. On tool error or empty result, show the user the exact tool output; do not invent weather. For a future date within 16 days, set forecast_days on get_weather.
 - To save/document content as a report: read_skill('markdown-report') → get_datetime(format: human) → fill template → save_markdown_report (never run_script for save_report.py). Put ALL report markdown only in the save_markdown_report tool argument — NEVER in chat (no preview, no code block, no sections). After save succeeds: ONE short sentence (e.g. draft saved, see preview on the right). Violating this is forbidden.`
 
 const PROJECT_SYSTEM_PROMPT = `You are a helpful AI assistant. Respond concisely and accurately.
@@ -37,6 +37,7 @@ You have access to these tools — use them when relevant:
 - list_skills: Lists all available skills/workflows
 - read_skill: Reads a skill's full content by name
 - run_script: Runs an executable script from a skill's scripts/ folder
+- get_weather: Fetches weather for a location (required for all weather questions)
 - get_datetime: Current date and time (use for {{DATE_TIME}} in reports)
 - list_project_conversations: Lists conversations in the current project
 - read_conversation: Reads full message history of a conversation
@@ -45,10 +46,18 @@ You have access to these tools — use them when relevant:
 Rules:
 - When the user references a skill with /skill_name, ALWAYS call read_skill with that name to load it.
 - When asked about available skills or what you can do, call list_skills.
-- When a skill has scripts listed in its resources, use run_script to execute them when relevant.
+- When a skill has scripts listed in its resources, use run_script to execute them when relevant (never for weather).
+- Weather: read_skill('weather') when using /weather, then call get_weather only — pass location verbatim; on tool error show exact tool output to the user; never invent weather.
 - Excerpts under "Relevant project knowledge" were retrieved automatically for this message; use them when helpful.
 - For other project data (full documents, other conversations), use tools only when the user asks.
 - To save/document content as a report: read_skill('markdown-report') → get_datetime(format: human) → fill template → save_markdown_report (never run_script for save_report.py). Put ALL report markdown only in the save_markdown_report tool argument — NEVER in chat (no preview, no code block, no sections). After save succeeds: ONE short sentence (e.g. draft saved, see preview on the right). Violating this is forbidden.`
+function looksLikeReportBody(text) {
+  if (!text || text.length < 80) return false
+  if (text.includes('{{DATE_TIME}}')) return true
+  const headings = (text.match(/^#{1,2}\s/mg) || []).length
+  return headings >= 1 && text.length > 300
+}
+
 const RIGHT_WIDTH = 280
 const SIDEBAR_EXPANDED_KEY = 'computerui_sidebar_expanded'
 
@@ -86,6 +95,9 @@ export default function App() {
   const { send, abort, isStreaming, requestReasoning } = useOllama()
 
   const [streamingMessage, setStreamingMessage] = useState(null)
+  const [documentCreating, setDocumentCreating] = useState(false)
+  const [docPhase, setDocPhase] = useState('idle')
+  const docRunActiveRef = useRef(false)
   const [model] = useState(DEFAULT_MODEL)
   const [view, setView] = useState('chat') // 'chat' | 'chatsList' | 'projects' | 'projectDetail' | 'gapAnalyzer'
   const [showCreateProject, setShowCreateProject] = useState(false)
@@ -201,8 +213,21 @@ export default function App() {
       tools = SKILL_TOOLS
     }
 
-    setStreamingMessage({ content: '', thinkContent: null })
+    const docRun = isDocumentRequest(text)
+    docRunActiveRef.current = docRun
+    if (docRun) {
+      setDocPhase('preparing')
+      setDocumentCreating(true)
+      setStreamingMessage(null)
+      setActiveReportId(null)
+    } else {
+      setDocumentCreating(false)
+      setDocPhase('idle')
+      setStreamingMessage({ content: '', thinkContent: null })
+    }
     setReportError(null)
+
+    const knownPhases = new Set(['read_skill', 'get_datetime', 'save_markdown_report'])
 
     await send({
       model,
@@ -210,6 +235,15 @@ export default function App() {
       systemPrompt,
       tools,
       toolContext: { projectId: conv.projectId, conversationId: convId },
+      onToolStart: ({ name }) => {
+        if (!docRunActiveRef.current) return
+        setDocPhase(knownPhases.has(name) ? name : 'preparing')
+      },
+      onDocumentToolActivity: () => {
+        docRunActiveRef.current = true
+        setDocumentCreating(true)
+        setDocPhase(prev => (prev === 'idle' ? 'preparing' : prev))
+      },
       onDraftCreated: ({ reportId }) => {
         setActiveReportId(reportId)
         setReportError(null)
@@ -219,16 +253,25 @@ export default function App() {
         setReportError(error)
       },
       onToken: ({ content, thinkContent }) => {
-        setStreamingMessage({ content, thinkContent })
+        if (!docRun) {
+          setStreamingMessage({ content, thinkContent })
+        }
       },
       onDone: ({ content, thinkContent, draftCreated, draftFailed }) => {
         setStreamingMessage(null)
+        if (!draftCreated?.reportId) {
+          docRunActiveRef.current = false
+          setDocumentCreating(false)
+          setDocPhase('idle')
+        }
         let finalContent = content
         if (draftCreated?.reportId) {
           const name = draftCreated.filename ? ` (${draftCreated.filename})` : ''
           finalContent = `Document created. Preview it in the panel on the right${name}.`
         } else if (draftFailed?.error) {
           finalContent = draftFailed.error
+        } else if (docRun && looksLikeReportBody(finalContent)) {
+          finalContent = 'Document save did not complete. Try again — preview will appear on the right when save succeeds.'
         }
         appendMessage(convId, {
           role: 'assistant',
@@ -238,6 +281,9 @@ export default function App() {
       },
       onError: (err) => {
         setStreamingMessage(null)
+        docRunActiveRef.current = false
+        setDocumentCreating(false)
+        setDocPhase('idle')
         appendMessage(convId, { role: 'assistant', content: `Error: ${err.message}`, thinkContent: null })
       },
     })
@@ -451,9 +497,19 @@ export default function App() {
             <ReportPreviewPanel
               reportId={activeReportId}
               error={reportError}
+              documentCreating={documentCreating}
+              documentPhase={docPhase}
+              onPreviewReady={() => {
+                docRunActiveRef.current = false
+                setDocumentCreating(false)
+                setDocPhase('idle')
+              }}
               onClose={() => {
                 setActiveReportId(null)
                 setReportError(null)
+                docRunActiveRef.current = false
+                setDocumentCreating(false)
+                setDocPhase('idle')
               }}
             />
           </div>

@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Download, X } from 'lucide-react'
+import DocumentCreatingStatus from './DocumentCreatingStatus.jsx'
+import '../styles/document-preview.css'
 
 const iconBtn = {
   background: 'none',
@@ -22,7 +25,14 @@ function getApiBase() {
   return 'http://localhost:3001'
 }
 
-export default function ReportPreviewPanel({ reportId, error: externalError, onClose }) {
+export default function ReportPreviewPanel({
+  reportId,
+  error: externalError,
+  documentCreating = false,
+  documentPhase = 'preparing',
+  onPreviewReady,
+  onClose,
+}) {
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(false)
   const [saveError, setSaveError] = useState(null)
@@ -90,13 +100,26 @@ export default function ReportPreviewPanel({ reportId, error: externalError, onC
   }, [report])
 
   const displayError = externalError || loadError
+  const showCreating = documentCreating && !report?.content && !displayError
 
-  if (!reportId && !displayError) return null
+  useEffect(() => {
+    if (documentCreating && report?.content) {
+      onPreviewReady?.()
+    }
+  }, [documentCreating, report?.content, onPreviewReady])
+
+  if (!reportId && !displayError && !documentCreating) return null
 
   const title = report?.dateTimeDisplay
     || report?.filename
     || (report?.content?.match(/^#\s+(.+)/m)?.[1]?.trim())
-    || (displayError ? 'Report error' : 'Document')
+    || (displayError ? 'Report error' : showCreating ? 'Creating your document' : 'Document')
+
+  const fileLabel = showCreating
+    ? 'Creating your document'
+    : report?.filename
+      ? `${report.filename.replace(/\.md$/i, '')} · MD`
+      : 'Document'
 
   return (
     <div
@@ -113,8 +136,9 @@ export default function ReportPreviewPanel({ reportId, error: externalError, onC
           display: 'flex',
           alignItems: 'center',
           gap: '0.35rem',
-          padding: '0.5rem 0.5rem 0.5rem 0.85rem',
+          padding: '0.6rem 0.5rem 0.6rem 0.85rem',
           borderBottom: '1px solid var(--border)',
+          background: 'var(--bg-panel)',
         }}
       >
         <div
@@ -130,7 +154,7 @@ export default function ReportPreviewPanel({ reportId, error: externalError, onC
           }}
           title={title}
         >
-          {loading ? '…' : title}
+          {loading && reportId && !report?.content ? '…' : fileLabel}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
           {report?.content && (
@@ -157,19 +181,40 @@ export default function ReportPreviewPanel({ reportId, error: externalError, onC
       </div>
 
       <div
-        style={{
+        className="document-preview-canvas"
+        style={showCreating ? {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           flex: 1,
-          overflowY: 'auto',
-          padding: '0.85rem',
           minHeight: 0,
-        }}
+        } : undefined}
       >
-        {displayError && !report?.content && (
-          <div style={{ fontSize: '0.8em', color: 'var(--stop-color)' }}>{displayError}</div>
+        {showCreating && (
+          <DocumentCreatingStatus phase={documentPhase} active />
+        )}
+        {displayError && !report?.content && !showCreating && (
+          <div style={{ fontSize: '0.85em', color: 'var(--stop-color)', padding: '8px 12px' }}>
+            {displayError}
+          </div>
         )}
         {report?.content && (
-          <div className="prose" style={{ fontSize: '0.82em', color: 'var(--text-primary)' }}>
-            <ReactMarkdown>{report.content}</ReactMarkdown>
+          <div className="document-preview-page">
+            <div className="document-preview">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.content}</ReactMarkdown>
+            </div>
+          </div>
+        )}
+        {loading && reportId && !report?.content && !showCreating && (
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '2rem',
+              color: 'var(--text-muted)',
+              fontSize: '0.9em',
+            }}
+          >
+            Loading document…
           </div>
         )}
       </div>
@@ -182,6 +227,7 @@ export default function ReportPreviewPanel({ reportId, error: externalError, onC
             fontSize: '0.75em',
             color: 'var(--stop-color)',
             borderTop: '1px solid var(--border)',
+            background: 'var(--bg-panel)',
           }}
         >
           {saveError}

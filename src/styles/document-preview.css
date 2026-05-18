@@ -1,0 +1,171 @@
+/* Scoped to ReportPreviewPanel only — not chat .prose */
+
+.document-preview-canvas {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  background: var(--doc-canvas-bg, #e8eaed);
+  padding: 24px 16px;
+}
+
+.document-preview-page {
+  max-width: 720px;
+  margin: 0 auto 32px;
+  background: #ffffff;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 48px 56px;
+  min-height: 480px;
+}
+
+.document-preview {
+  color: var(--doc-text, #1e3a5f);
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.document-preview > *:first-child {
+  margin-top: 0;
+}
+
+.document-preview h1 {
+  font-size: 1.65em;
+  font-weight: 700;
+  color: var(--doc-heading, #1a365d);
+  margin: 0 0 0.75em;
+  line-height: 1.25;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.35em;
+}
+
+.document-preview h2 {
+  font-size: 1.35em;
+  font-weight: 700;
+  color: var(--doc-heading, #1a365d);
+  margin: 1.35em 0 0.5em;
+  line-height: 1.3;
+}
+
+.document-preview h3 {
+  font-size: 1.15em;
+  font-weight: 600;
+  color: var(--doc-heading, #1a365d);
+  margin: 1.15em 0 0.4em;
+  line-height: 1.35;
+}
+
+.document-preview h4,
+.document-preview h5,
+.document-preview h6 {
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--doc-heading, #1a365d);
+  margin: 1em 0 0.35em;
+}
+
+.document-preview p {
+  margin: 0 0 0.85em;
+}
+
+.document-preview ul,
+.document-preview ol {
+  margin: 0.35em 0 0.85em 1.35em;
+  padding: 0;
+}
+
+.document-preview li {
+  margin-bottom: 0.35em;
+}
+
+.document-preview li > p {
+  margin-bottom: 0.35em;
+}
+
+.document-preview strong {
+  font-weight: 700;
+  color: var(--doc-heading, #1a365d);
+}
+
+.document-preview a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.document-preview hr {
+  border: none;
+  border-top: 1px solid #cbd5e1;
+  margin: 1.5em 0;
+}
+
+.document-preview blockquote {
+  margin: 0.85em 0;
+  padding: 0.35em 0 0.35em 1em;
+  border-left: 3px solid #94a3b8;
+  color: #475569;
+  font-style: italic;
+}
+
+.document-preview code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.88em;
+  background: #f1f5f9;
+  color: #1e3a5f;
+  padding: 0.12em 0.35em;
+  border-radius: 3px;
+  border: 1px solid #e2e8f0;
+}
+
+.document-preview pre {
+  background: #f8fafc;
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+  padding: 1em 1.1em;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.85em 0;
+  font-size: 0.88em;
+  line-height: 1.5;
+}
+
+.document-preview pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+}
+
+.document-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.95em;
+}
+
+.document-preview thead {
+  background: #f1f5f9;
+}
+
+.document-preview th,
+.document-preview td {
+  border: 1px solid #cbd5e1;
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.document-preview th {
+  font-weight: 700;
+  color: var(--doc-heading, #1a365d);
+}
+
+.document-preview tr:nth-child(even) td {
+  background: #f8fafc;
+}
+
+.document-preview img {
+  max-width: 100%;
+  height: auto;
+  margin: 0.75em 0;
+}

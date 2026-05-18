@@ -3,12 +3,9 @@ import { CheckCircle, AlertCircle, Loader, Search } from 'lucide-react'
 import { firstLiveImagePath } from '../../hooks/useGapSessions.js'
 import { getLiveSignedUrl } from '../../hooks/usePlannedEngagement.js'
 
-const API = '/api/gap-analyzer'
-
-export default function GapResultView({ runId, asins, asinProgress, liveFiles = [], onSelect }) {
+export default function GapResultView({ asins, asinProgress, liveFiles = [], onSelect }) {
   const [search, setSearch] = useState('')
   const [thumbUrls, setThumbUrls] = useState({})
-  const [localThumbUrls, setLocalThumbUrls] = useState({})
 
   useEffect(() => {
     let cancelled = false
@@ -27,26 +24,6 @@ export default function GapResultView({ runId, asins, asinProgress, liveFiles = 
     return () => { cancelled = true }
   }, [asins, liveFiles])
 
-  useEffect(() => {
-    if (!runId) return
-    let cancelled = false
-    async function loadLocal() {
-      const urls = {}
-      for (const { asin } of asins) {
-        try {
-          const res = await fetch(`${API}/captures/${runId}/${asin}`)
-          if (!res.ok) continue
-          const { files } = await res.json()
-          const firstPng = (files || []).find(f => /\.png$/i.test(f))
-          if (firstPng) urls[asin] = `${API}/captures/${runId}/${asin}/${firstPng}`
-        } catch { /* skip */ }
-      }
-      if (!cancelled) setLocalThumbUrls(urls)
-    }
-    loadLocal()
-    return () => { cancelled = true }
-  }, [runId, asins])
-
   const filtered = asins.filter(({ asin }) =>
     asin.toLowerCase().includes(search.toLowerCase())
   )
@@ -54,7 +31,6 @@ export default function GapResultView({ runId, asins, asinProgress, liveFiles = 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-      {/* Search bar */}
       <div style={{ flexShrink: 0, padding: '0.75rem 1rem', borderBottom: '1px solid var(--border)' }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -76,7 +52,6 @@ export default function GapResultView({ runId, asins, asinProgress, liveFiles = 
         </div>
       </div>
 
-      {/* Card grid */}
       <div style={{
         flex: 1, overflowY: 'auto',
         padding: '1rem',
@@ -115,29 +90,32 @@ export default function GapResultView({ runId, asins, asinProgress, liveFiles = 
                 opacity: (p?.status === 'error' || p?.status === 'blocked') ? 0.55 : 1,
               }}
             >
-              {/* Thumbnail */}
               <div style={{
                 width: '100%', aspectRatio: '4/3',
                 background: 'var(--bg-secondary)',
                 overflow: 'hidden',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                {runId && isClickable ? (
-                  <img
-                    loading="lazy"
-                    src={thumbUrls[asin] || localThumbUrls[asin] || ''}
-                    alt=""
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    onError={e => { e.currentTarget.style.display = 'none' }}
-                  />
-                ) : (
+                {isClickable ? (() => {
+                  const src = thumbUrls[asin]
+                  return src ? (
+                    <img
+                      loading="lazy"
+                      src={src}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={e => { e.currentTarget.style.display = 'none' }}
+                    />
+                  ) : (
+                    <span style={{ fontSize: '0.7em', color: 'var(--text-muted)' }}>No preview</span>
+                  )
+                })() : (
                   <span style={{ fontSize: '0.7em', color: 'var(--text-muted)' }}>
                     {p?.status === 'running' ? 'Capturing…' : p?.status || 'Queued'}
                   </span>
                 )}
               </div>
 
-              {/* Info row */}
               <div style={{ padding: '0.5rem 0.65rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                 <div style={{ fontFamily: 'monospace', fontSize: '0.8em', fontWeight: 600, color: 'var(--text-primary)' }}>
                   {asin}

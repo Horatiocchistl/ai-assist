@@ -65,5 +65,14 @@ export async function syncLiveCaptures(runId) {
     }
   }
 
+  if (liveFiles.length > 0) {
+    try {
+      await fs.rm(runDir, { recursive: true, force: true })
+      console.log(`[sync-live-captures] removed local staging folder ${runId}`)
+    } catch (err) {
+      console.warn(`[sync-live-captures] cleanup failed for ${runId}:`, err.message)
+    }
+  }
+
   return liveFiles
 }
