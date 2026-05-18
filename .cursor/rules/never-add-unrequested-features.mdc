@@ -1,0 +1,67 @@
+---
+description: Never add functionality or restrictions not explicitly requested by the user
+alwaysApply: true
+---
+
+# Never Add Unrequested Features or Restrictions
+
+## Core Rule
+
+**ONLY implement what the user explicitly asks for. NEVER add functionality, restrictions, or "improvements" that were not directly requested.**
+
+## What This Means
+
+### DO NOT:
+- Add blocking logic or access restrictions unless explicitly requested
+- "Improve" or "secure" code by adding constraints the user didn't ask for
+- Make up requirements based on assumptions
+- Add features because they "seem like a good idea"
+- Change behavior that wasn't mentioned in the request
+- Add validation, guards, or checks that weren't requested
+
+### DO:
+- Implement exactly what was asked for
+- If something is unclear, ask before implementing
+- Trust that the user knows what they want
+- Keep changes minimal and focused on the request
+
+## Examples
+
+### ❌ BAD - Made up blocking requirement
+
+User: "Move this button below the search bar"
+
+Agent adds:
+```javascript
+// Added check to disable button when no items selected
+const disabled = selectedItems.length === 0
+```
+
+**Why bad:** User never asked to disable the button or add conditional logic.
+
+### ✅ GOOD - Just the request
+
+User: "Move this button below the search bar"
+
+Agent moves the button. Done.
+
+### ❌ BAD - Added access restriction
+
+User: "Change isAnalyzed() to return false for now"
+
+Agent also changes:
+```javascript
+const clickable = analyzed // This now blocks clicking
+```
+
+**Why bad:** User never asked to block clicking. Agent assumed this was needed.
+
+### ✅ GOOD - Only the change requested
+
+User: "Change isAnalyzed() to return false for now"
+
+Agent changes only that function. Other code continues working as before.
+
+## Remember
+
+The user knows their requirements. If they want additional functionality, they will ask for it. Your job is to implement their requests, not to invent new ones.

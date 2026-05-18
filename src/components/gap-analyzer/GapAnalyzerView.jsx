@@ -516,7 +516,7 @@ export default function GapAnalyzerView() {
               </div>
             )}
             <GapResultView
-              asins={asins}
+              plans={plans}
               asinProgress={asinProgress}
               liveFiles={liveFiles}
               onSelect={setDetailAsin}

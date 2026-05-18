@@ -1,5 +1,6 @@
 import React from 'react'
 import { CheckCircle, AlertCircle, Loader } from 'lucide-react'
+import { isPlanReady } from '../../hooks/usePlannedEngagement.js'
 
 export default function RunPlanSidebar({ plans, progress = {} }) {
   if (!plans.length) {
@@ -16,13 +17,14 @@ export default function RunPlanSidebar({ plans, progress = {} }) {
         fontSize: '0.7em', fontWeight: 600, letterSpacing: '0.06em',
         textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.35rem',
       }}>
-        Queued from plans ({plans.length})
+        QUEUED FROM PLANS ({plans.length})
       </div>
       {plans.map(p => {
         const prog = progress[p.asin]
         const icon = prog?.status === 'complete' ? <CheckCircle size={10} style={{ color: 'var(--accent)' }} />
           : prog?.status === 'running' ? <Loader size={10} style={{ color: '#e0a040' }} />
           : prog?.status === 'error' || prog?.status === 'blocked' ? <AlertCircle size={10} style={{ color: '#c05820' }} />
+          : isPlanReady(p) ? <CheckCircle size={10} style={{ color: 'var(--accent)' }} />
           : null
         const imgCount = (p.images || []).length
         return (

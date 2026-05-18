@@ -1,0 +1,38 @@
+---
+description: Always review and incorporate all workspace rules when creating plans
+alwaysApply: true
+---
+
+# Include All Rules in Every Plan
+
+## Core Rule
+
+**When creating a plan in Plan mode, you MUST review ALL workspace rules in `.cursor/rules/` and incorporate them into your plan. No exceptions.**
+
+## Process
+
+1. Before creating any plan, read ALL `.mdc` files in `.cursor/rules/`
+2. Check if any rules apply to the code you'll be modifying
+3. Incorporate those rules' requirements into the plan
+4. Reference the specific rules in the plan
+
+## Why This Matters
+
+Rules exist because patterns were broken before. If you don't check rules before planning, you'll repeat the same mistakes and waste the user's time.
+
+## Example
+
+User asks: "Add a new feature to the card component"
+
+**Before writing the plan:**
+1. Read `.cursor/rules/never-add-unrequested-features.mdc`
+2. Read `.cursor/rules/restart-app-after-changes.mdc`
+3. Read any other relevant rules
+
+**In the plan:**
+- Note: "Following never-add-unrequested-features.mdc - only implementing requested feature, no additional improvements"
+- Note: "Following restart-app-after-changes.mdc - will rebuild and restart app after changes"
+
+## No Exceptions
+
+Even for "quick fixes" or "simple changes" - always check the rules first.
