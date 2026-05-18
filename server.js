@@ -751,6 +751,10 @@ app.post('/api/gap-analyzer/run', async (req, res) => {
       emitToRun(run, { type: 'log', level: 'error', msg: `Fatal run error: ${err.message}` })
       run.status = 'error'
     } finally {
+      try {
+        const { closeBrowser } = await import('./browser-agent/browser-session.js')
+        await closeBrowser()
+      } catch { /* ignore */ }
       emitToRun(run, { type: 'run_status', status: run.status })
       // Close all SSE connections
       for (const res of run.listeners) {

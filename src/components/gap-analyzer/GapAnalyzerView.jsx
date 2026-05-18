@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { ScanSearch, Play, Square, AlertCircle, CheckCircle, Loader } from 'lucide-react'
 import AsinManager from './AsinManager.jsx'
 import GapResultView from './GapResultView.jsx'
+import GapResultErrorBoundary from './GapResultErrorBoundary.jsx'
 
 const API = '/api/gap-analyzer'
 
@@ -325,7 +326,9 @@ export default function GapAnalyzerView() {
         </>}
 
         {activeTab === 'results' && (
-          <GapResultView runId={runId} asins={asins} asinProgress={asinProgress} />
+          <GapResultErrorBoundary>
+            <GapResultView runId={runId} asins={asins} asinProgress={asinProgress} />
+          </GapResultErrorBoundary>
         )}
       </div>
     </div>

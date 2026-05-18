@@ -11,6 +11,44 @@ import { apifyFetchProduct } from './apify-client.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const CAPTURES_ROOT = path.join(__dirname, '..', 'captures')
 
+function _normalizeDomData(dom) {
+  if (!dom) return null
+
+  // Map "Label: Value" strings from overview/accordion → { name, value } rows
+  const splitRow = (line, fallbackName) => {
+    const idx = line.indexOf(': ')
+    if (idx === -1) return { name: fallbackName || 'Detail', value: line }
+    return { name: line.slice(0, idx).trim(), value: line.slice(idx + 2).trim() }
+  }
+
+  const overviewRows = (dom.overview || []).map(l => splitRow(l))
+  const accordionRows = (dom.accordionSections || []).flatMap(s =>
+    (s.items || []).map(item => splitRow(item, s.heading))
+  )
+
+  return {
+    title:                 dom.title || null,
+    brand:                 null,
+    price:                 null,
+    asin:                  null,
+    url:                   null,
+    inStock:               null,
+    stars:                 null,
+    reviewsCount:          null,
+    monthlyPurchaseVolume: null,
+    breadCrumbs:           null,
+    bullets:               Array.isArray(dom.bullets) ? dom.bullets.filter(b => typeof b === 'string' && b.trim()) : [],
+    attributes:            [],
+    productOverview:       [...overviewRows, ...accordionRows],
+    importantInformation:  null,
+    highResImages:         [],
+    aplusImages:           [],
+    description:           null,
+    bestsellerRanks:       [],
+    seller:                null,
+  }
+}
+
 export async function runAnalysis(runId, asins, emit, signal) {
   emit({ type: 'log', level: 'info', msg: `Run started — ${asins.length} ASIN(s) queued` })
 
@@ -90,9 +128,10 @@ export async function runAnalysis(runId, asins, emit, signal) {
         emit({ type: 'log', level: 'info', msg: `${logPrefix} — Apify: ${t.bullets.length} bullet(s), ${t.attributes.length} attribute(s), ${t.highResImages.length} high-res image(s)` })
       } else {
         if (apifyToken) {
-          emit({ type: 'log', level: 'warn', msg: `${logPrefix} — Apify failed (${apifyResult.reason?.message}), falling back to DOM extraction` })
+          emit({ type: 'log', level: 'warn', msg: `${logPrefix} — Apify failed (${apifyResult.reason?.message ?? 'unknown'}), falling back to DOM extraction` })
         }
-        asinResult.text = await extractProductText(page).catch(() => null)
+        const domRaw = await extractProductText(page).catch(() => null)
+        asinResult.text = domRaw ? _normalizeDomData(domRaw) : null
         if (asinResult.text?.title) {
           emit({ type: 'log', level: 'info', msg: `${logPrefix} — DOM title: "${asinResult.text.title.slice(0, 100)}"` })
         }
