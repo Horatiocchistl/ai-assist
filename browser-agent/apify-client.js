@@ -2,30 +2,37 @@ import { ApifyClient } from 'apify-client'
 
 const TASK_ID = 'y1DSoxZcsZM7MFPzp'
 
+function _safeStr(v) {
+  if (v == null) return null
+  if (typeof v === 'string') return v.trim() || null
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  return null
+}
+
 // Field names verified from real actor output JSON
 function _normalizeResult(item) {
   if (!item) return null
 
   return {
-    title:                 item.title || null,
-    brand:                 item.brand || null,
+    title:                 _safeStr(item.title),
+    brand:                 _safeStr(item.brand),
     price:                 item.price?.value != null ? `${item.price.currency}${item.price.value}` : null,
-    asin:                  item.asin || null,
-    url:                   item.url || null,
+    asin:                  _safeStr(item.asin),
+    url:                   _safeStr(item.url),
     inStock:               item.inStock ?? null,
     stars:                 item.stars ?? null,
-    reviewsCount:          item.reviewsCount ?? null,
-    monthlyPurchaseVolume: item.monthlyPurchaseVolume || null,
-    breadCrumbs:           item.breadCrumbs || null,
-    bullets:               Array.isArray(item.features) ? item.features.filter(Boolean) : [],
-    attributes:            Array.isArray(item.attributes) ? item.attributes : [],
-    productOverview:       Array.isArray(item.productOverview) ? item.productOverview : [],
-    importantInformation:  item.importantInformation || null,
+    reviewsCount:          typeof item.reviewsCount === 'number' ? item.reviewsCount : null,
+    monthlyPurchaseVolume: _safeStr(item.monthlyPurchaseVolume),
+    breadCrumbs:           _safeStr(item.breadCrumbs),
+    bullets:               Array.isArray(item.features) ? item.features.filter(f => typeof f === 'string' && f.trim()) : [],
+    attributes:            Array.isArray(item.attributes) ? item.attributes.filter(Boolean) : [],
+    productOverview:       Array.isArray(item.productOverview) ? item.productOverview.filter(Boolean) : [],
+    importantInformation:  _safeStr(item.importantInformation),
     highResImages:         Array.isArray(item.highResolutionImages) ? item.highResolutionImages : [],
     aplusImages:           Array.isArray(item.aPlusContent?.rawImages) ? item.aPlusContent.rawImages : [],
-    description:           item.description || null,
-    bestsellerRanks:       Array.isArray(item.bestsellerRanks) ? item.bestsellerRanks : [],
-    seller:                item.seller || null,
+    description:           typeof item.description === 'string' ? item.description : null,
+    bestsellerRanks:       Array.isArray(item.bestsellerRanks) ? item.bestsellerRanks.filter(Boolean) : [],
+    seller:                _safeStr(item.seller),
     _raw:                  item,
   }
 }

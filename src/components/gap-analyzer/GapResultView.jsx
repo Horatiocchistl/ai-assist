@@ -7,6 +7,19 @@ function imgUrl(runId, asin, filename) {
   return `${API}/captures/${runId}/${asin}/${filename}`
 }
 
+// ── Safe rendering helpers ────────────────────────────────────────────────────
+
+function safeStr(v) {
+  if (v == null) return null
+  if (typeof v === 'string') return v.trim() || null
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  try { return JSON.stringify(v) } catch { return null }
+}
+
+function safeArr(v) {
+  return Array.isArray(v) ? v.filter(x => x != null) : []
+}
+
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
 function Lightbox({ src, onClose }) {
@@ -68,23 +81,6 @@ function ScreenshotPanel({ runId, asin, files, onLightbox }) {
   const scrolls  = files.filter(f => /^scroll_/.test(f)).sort()
   const aplus    = files.filter(f => /^aplus_\d+/.test(f)).sort()
 
-  const thumb = (filename, label) => (
-    <img
-      key={filename}
-      src={imgUrl(runId, asin, filename)}
-      alt={label || filename}
-      title={label || filename}
-      onClick={() => onLightbox(imgUrl(runId, asin, filename))}
-      style={{
-        cursor: 'zoom-in',
-        borderRadius: 4,
-        border: '1px solid var(--border)',
-        objectFit: 'contain',
-        background: '#fff',
-      }}
-    />
-  )
-
   const scrollLabel = (f) => {
     const m = f.match(/scroll_(\d+)pct/)
     return m ? `${m[1]}% scroll` : f
@@ -96,6 +92,7 @@ function ScreenshotPanel({ runId, asin, files, onLightbox }) {
       {hero && <>
         <SectionLabel>Hero</SectionLabel>
         <img
+          loading="lazy"
           src={imgUrl(runId, asin, hero)}
           alt="hero"
           onClick={() => onLightbox(imgUrl(runId, asin, hero))}
@@ -114,7 +111,20 @@ function ScreenshotPanel({ runId, asin, files, onLightbox }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem' }}>
           {carousel.map(f => (
             <div key={f} style={{ aspectRatio: '1', overflow: 'hidden' }}>
-              {thumb(f)}
+              <img
+                loading="lazy"
+                src={imgUrl(runId, asin, f)}
+                alt={f}
+                onClick={() => onLightbox(imgUrl(runId, asin, f))}
+                style={{
+                  width: '100%', height: '100%',
+                  objectFit: 'contain',
+                  cursor: 'zoom-in',
+                  borderRadius: 4,
+                  border: '1px solid var(--border)',
+                  background: '#fff',
+                }}
+              />
             </div>
           ))}
         </div>
@@ -128,6 +138,7 @@ function ScreenshotPanel({ runId, asin, files, onLightbox }) {
               {scrollLabel(f)}
             </div>
             <img
+              loading="lazy"
               src={imgUrl(runId, asin, f)}
               alt={f}
               onClick={() => onLightbox(imgUrl(runId, asin, f))}
@@ -151,6 +162,7 @@ function ScreenshotPanel({ runId, asin, files, onLightbox }) {
               Module {i + 1}
             </div>
             <img
+              loading="lazy"
               src={imgUrl(runId, asin, f)}
               alt={f}
               onClick={() => onLightbox(imgUrl(runId, asin, f))}
@@ -195,37 +207,48 @@ function ProductDataPanel({ data }) {
     )
   }
 
+  const bullets       = safeArr(data.bullets).filter(b => typeof b === 'string')
+  const attributes    = safeArr(data.attributes).filter(a => a && typeof a === 'object' && !Array.isArray(a))
+  const overview      = safeArr(data.productOverview).filter(a => a && typeof a === 'object' && !Array.isArray(a))
+  const bsrList       = safeArr(data.bestsellerRanks).filter(r => r !== null && r !== undefined)
+  const description   = typeof data.description === 'string' ? data.description : null
+
   return (
     <div style={{ padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0', fontSize: '0.85em' }}>
 
       <SectionLabel>Overview</SectionLabel>
-      {data.title   && <DataRow label="Title">{data.title}</DataRow>}
-      {data.brand   && <DataRow label="Brand">{data.brand}</DataRow>}
-      {data.price   && <DataRow label="Price">{data.price}</DataRow>}
+      {safeStr(data.title)   && <DataRow label="Title">{safeStr(data.title)}</DataRow>}
+      {safeStr(data.brand)   && <DataRow label="Brand">{safeStr(data.brand)}</DataRow>}
+      {safeStr(data.price)   && <DataRow label="Price">{safeStr(data.price)}</DataRow>}
       {data.stars != null && (
-        <DataRow label="Rating">{data.stars} ★ ({data.reviewsCount?.toLocaleString()} reviews)</DataRow>
+        <DataRow label="Rating">
+          {safeStr(data.stars)} ★
+          {data.reviewsCount != null && ` (${Number(data.reviewsCount).toLocaleString()} reviews)`}
+        </DataRow>
       )}
       {data.inStock != null && (
         <DataRow label="In Stock">{data.inStock ? 'Yes' : 'No'}</DataRow>
       )}
-      {data.monthlyPurchaseVolume && (
-        <DataRow label="Monthly Sales">{data.monthlyPurchaseVolume}</DataRow>
+      {safeStr(data.monthlyPurchaseVolume) && (
+        <DataRow label="Monthly Sales">{safeStr(data.monthlyPurchaseVolume)}</DataRow>
       )}
-      {data.seller  && <DataRow label="Seller">{data.seller}</DataRow>}
+      {safeStr(data.seller) && <DataRow label="Seller">{safeStr(data.seller)}</DataRow>}
 
-      {data.bestsellerRanks?.length > 0 && (
+      {bsrList.length > 0 && (
         <DataRow label="BSR">
-          {data.bestsellerRanks.map((r, i) => (
-            <div key={i} style={{ marginBottom: 2 }}>
-              {typeof r === 'object' ? `#${r.rank} in ${r.category}` : String(r)}
+          {bsrList.map((r, i) => (
+            <div key={i}>
+              {r !== null && typeof r === 'object'
+                ? `#${safeStr(r.rank) ?? '?'} in ${safeStr(r.category) ?? '?'}`
+                : String(r)}
             </div>
           ))}
         </DataRow>
       )}
 
-      {data.bullets?.length > 0 && <>
-        <SectionLabel>Bullets ({data.bullets.length})</SectionLabel>
-        {data.bullets.map((b, i) => (
+      {bullets.length > 0 && <>
+        <SectionLabel>Bullets ({bullets.length})</SectionLabel>
+        {bullets.map((b, i) => (
           <div key={i} style={{
             display: 'flex', gap: '0.5rem',
             padding: '0.3rem 0',
@@ -239,40 +262,38 @@ function ProductDataPanel({ data }) {
         ))}
       </>}
 
-      {data.attributes?.length > 0 && <>
-        <SectionLabel>Specs ({data.attributes.length})</SectionLabel>
-        {data.attributes.map((a, i) => (
-          <DataRow key={i} label={a.name || a.label || a[0] || '—'}>
-            {a.value || a[1] || '—'}
+      {attributes.length > 0 && <>
+        <SectionLabel>Specs ({attributes.length})</SectionLabel>
+        {attributes.map((a, i) => (
+          <DataRow key={i} label={safeStr(a.name) || safeStr(a.label) || '—'}>
+            {safeStr(a.value) || '—'}
           </DataRow>
         ))}
       </>}
 
-      {data.productOverview?.length > 0 && <>
-        <SectionLabel>Product Overview ({data.productOverview.length})</SectionLabel>
-        {data.productOverview.map((a, i) => (
-          <DataRow key={i} label={a.name || a.label || a[0] || '—'}>
-            {a.value || a[1] || '—'}
+      {overview.length > 0 && <>
+        <SectionLabel>Product Overview ({overview.length})</SectionLabel>
+        {overview.map((a, i) => (
+          <DataRow key={i} label={safeStr(a.name) || safeStr(a.label) || '—'}>
+            {safeStr(a.value) || '—'}
           </DataRow>
         ))}
       </>}
 
-      {(data.highResImages?.length > 0 || data.aplusImages?.length > 0) && <>
+      {(safeArr(data.highResImages).length > 0 || safeArr(data.aplusImages).length > 0) && <>
         <SectionLabel>Images</SectionLabel>
-        {data.highResImages?.length > 0 && (
-          <DataRow label="High-res tiles">{data.highResImages.length}</DataRow>
+        {safeArr(data.highResImages).length > 0 && (
+          <DataRow label="High-res tiles">{safeArr(data.highResImages).length}</DataRow>
         )}
-        {data.aplusImages?.length > 0 && (
-          <DataRow label="A+ (Apify)">
-            {data.aplusImages.length} image{data.aplusImages.length !== 1 ? 's' : ''}
-          </DataRow>
+        {safeArr(data.aplusImages).length > 0 && (
+          <DataRow label="A+ (Apify)">{safeArr(data.aplusImages).length}</DataRow>
         )}
       </>}
 
-      {data.description && <>
+      {description && <>
         <SectionLabel>Description</SectionLabel>
         <div style={{ fontSize: '0.78em', color: 'var(--text-secondary)', lineHeight: 1.6, padding: '0.4rem 0' }}>
-          {data.description.slice(0, 600)}{data.description.length > 600 ? '…' : ''}
+          {description.slice(0, 600)}{description.length > 600 ? '…' : ''}
         </div>
       </>}
     </div>
@@ -283,7 +304,7 @@ function ProductDataPanel({ data }) {
 
 export default function GapResultView({ runId, asins, asinProgress }) {
   const [selectedAsin, setSelectedAsin] = useState(null)
-  const [captureData, setCaptureData] = useState(null) // { files, productData }
+  const [captureData, setCaptureData] = useState(null)
   const [lightbox, setLightbox] = useState(null)
 
   // Auto-select first completed ASIN
@@ -303,7 +324,7 @@ export default function GapResultView({ runId, asins, asinProgress }) {
       .catch(() => {})
   }, [runId, selectedAsin])
 
-  const files = captureData?.files || []
+  const files = safeArr(captureData?.files).filter(f => typeof f === 'string')
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
