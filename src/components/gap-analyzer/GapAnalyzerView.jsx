@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { ScanSearch, Play, Square, AlertCircle, CheckCircle, Loader } from 'lucide-react'
 import AsinManager from './AsinManager.jsx'
 import GapResultView from './GapResultView.jsx'
+import GapDetailView from './GapDetailView.jsx'
 import GapResultErrorBoundary from './GapResultErrorBoundary.jsx'
 
 const API = '/api/gap-analyzer'
@@ -19,6 +20,7 @@ export default function GapAnalyzerView() {
   const [log, setLog] = useState([])
   const [asinProgress, setAsinProgress] = useState({}) // asin -> { status, carouselCount, aplusCount }
   const [activeTab, setActiveTab] = useState('run') // 'run' | 'results'
+  const [detailAsin, setDetailAsin] = useState(null) // ASIN open in full-page detail view
   const logEndRef = useRef(null)
   const eventSourceRef = useRef(null)
 
@@ -126,6 +128,19 @@ export default function GapAnalyzerView() {
     error:    { color: '#c05820',         label: 'Error' },
   }[runStatus] || { color: 'var(--border)', label: 'Idle' }
 
+  // Full-page ASIN detail view — takes over the entire window
+  if (activeTab === 'results' && detailAsin) {
+    return (
+      <GapResultErrorBoundary>
+        <GapDetailView
+          runId={runId}
+          asin={detailAsin}
+          onBack={() => setDetailAsin(null)}
+        />
+      </GapResultErrorBoundary>
+    )
+  }
+
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden', background: 'var(--bg-primary)' }}>
 
@@ -216,7 +231,7 @@ export default function GapAnalyzerView() {
             return (
               <button
                 key={tab}
-                onClick={() => !isDisabled && setActiveTab(tab)}
+                onClick={() => { if (!isDisabled) { setActiveTab(tab); if (tab !== 'results') setDetailAsin(null) } }}
                 style={{
                   padding: '0.5rem 0.9rem',
                   border: 'none',
@@ -327,7 +342,12 @@ export default function GapAnalyzerView() {
 
         {activeTab === 'results' && (
           <GapResultErrorBoundary>
-            <GapResultView runId={runId} asins={asins} asinProgress={asinProgress} />
+            <GapResultView
+              runId={runId}
+              asins={asins}
+              asinProgress={asinProgress}
+              onSelect={setDetailAsin}
+            />
           </GapResultErrorBoundary>
         )}
       </div>
