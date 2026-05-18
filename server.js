@@ -843,6 +843,26 @@ app.get('/api/gap-analyzer/captures/:runId/:asin/:filename', (req, res) => {
   res.sendFile(filePath)
 })
 
+// GET /api/gap-analyzer/runs — list completed runs from disk, newest first
+app.get('/api/gap-analyzer/runs', (req, res) => {
+  const capturesDir = path.join(__dirname, 'captures')
+  if (!fs.existsSync(capturesDir)) return res.json([])
+  try {
+    const runs = fs.readdirSync(capturesDir, { withFileTypes: true })
+      .filter(e => e.isDirectory())
+      .map(e => {
+        const mp = path.join(capturesDir, e.name, 'run-manifest.json')
+        if (!fs.existsSync(mp)) return null
+        try { return JSON.parse(fs.readFileSync(mp, 'utf-8')) } catch { return null }
+      })
+      .filter(Boolean)
+      .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''))
+    res.json(runs)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ─── End Gap Analyzer ──────────────────────────────────────────────────────────
 
 // Catch-all: serve index.html for client-side routing (production)

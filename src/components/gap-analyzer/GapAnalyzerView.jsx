@@ -4,6 +4,7 @@ import AsinManager from './AsinManager.jsx'
 import GapResultView from './GapResultView.jsx'
 import GapDetailView from './GapDetailView.jsx'
 import GapResultErrorBoundary from './GapResultErrorBoundary.jsx'
+import { saveGapSession, loadLatestGapSession } from '../../hooks/useGapSessions.js'
 
 const API = '/api/gap-analyzer'
 
@@ -33,6 +34,27 @@ export default function GapAnalyzerView() {
   useEffect(() => {
     return () => eventSourceRef.current?.close()
   }, [])
+
+  // Restore most recent completed run from Supabase on mount
+  useEffect(() => {
+    loadLatestGapSession().then(session => {
+      if (!session) return
+      const asinsArr = session.asins_data.map(a => ({ asin: a.asin, url: a.url }))
+      const progress = {}
+      for (const a of session.asins_data) {
+        progress[a.asin] = {
+          status: a.status === 'captured' ? 'complete' : a.status,
+          carouselCount: a.carouselCount,
+          aplusCount: a.aplusCount,
+        }
+      }
+      setRunId(session.server_run_id)
+      setAsins(asinsArr)
+      setAsinProgress(progress)
+      setRunStatus('complete')
+      setActiveTab('results')
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const appendLog = useCallback((entry) => {
     setLog(prev => [...prev, entry])
@@ -76,7 +98,21 @@ export default function GapAnalyzerView() {
       case 'run_status': {
         const nextStatus = event.status === 'complete' ? 'complete' : event.status === 'stopped' ? 'stopped' : 'error'
         setRunStatus(nextStatus)
-        if (nextStatus === 'complete') setActiveTab('results')
+        if (nextStatus === 'complete') {
+          setActiveTab('results')
+          // Persist to Supabase using functional updater to read latest asinProgress
+          setAsinProgress(prev => {
+            const asinsData = asins.map(a => ({
+              asin: a.asin,
+              url: a.url,
+              status: prev[a.asin]?.status === 'complete' ? 'captured' : (prev[a.asin]?.status || 'error'),
+              carouselCount: prev[a.asin]?.carouselCount ?? 0,
+              aplusCount: prev[a.asin]?.aplusCount ?? 0,
+            }))
+            saveGapSession(runId, asinsData)
+            return prev
+          })
+        }
         eventSourceRef.current?.close()
         break
       }
