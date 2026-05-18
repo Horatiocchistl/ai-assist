@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { ScanSearch, Play, Square, AlertCircle, CheckCircle, Loader } from 'lucide-react'
 import AsinManager from './AsinManager.jsx'
+import GapResultView from './GapResultView.jsx'
 
 const API = '/api/gap-analyzer'
 
@@ -16,6 +17,7 @@ export default function GapAnalyzerView() {
   const [runStatus, setRunStatus] = useState('idle') // idle | running | complete | stopped | error
   const [log, setLog] = useState([])
   const [asinProgress, setAsinProgress] = useState({}) // asin -> { status, carouselCount, aplusCount }
+  const [activeTab, setActiveTab] = useState('run') // 'run' | 'results'
   const logEndRef = useRef(null)
   const eventSourceRef = useRef(null)
 
@@ -68,10 +70,13 @@ export default function GapAnalyzerView() {
       case 'asin_blocked':
         setAsinProgress(prev => ({ ...prev, [event.asin]: { status: 'blocked', error: event.reason } }))
         break
-      case 'run_status':
-        setRunStatus(event.status === 'complete' ? 'complete' : event.status === 'stopped' ? 'stopped' : 'error')
+      case 'run_status': {
+        const nextStatus = event.status === 'complete' ? 'complete' : event.status === 'stopped' ? 'stopped' : 'error'
+        setRunStatus(nextStatus)
+        if (nextStatus === 'complete') setActiveTab('results')
         eventSourceRef.current?.close()
         break
+      }
       default:
         break
     }
@@ -191,96 +196,137 @@ export default function GapAnalyzerView() {
         </div>
       </div>
 
-      {/* RIGHT PANEL — log + ASIN status cards */}
+      {/* RIGHT PANEL */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-center)' }}>
 
-        {/* ASIN status row — shown once run starts */}
-        {Object.keys(asinProgress).length > 0 && (
-          <div style={{
-            flexShrink: 0,
-            borderBottom: '1px solid var(--border)',
-            padding: '0.5rem 1rem',
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '0.4rem',
-          }}>
-            {asins.map(({ asin }) => {
-              const p = asinProgress[asin]
-              if (!p) return null
-              const icon = p.status === 'complete' ? <CheckCircle size={10} style={{ color: 'var(--accent)' }} />
-                : p.status === 'running' ? <Loader size={10} style={{ color: '#e0a040' }} />
-                : p.status === 'error' || p.status === 'blocked' ? <AlertCircle size={10} style={{ color: '#c05820' }} />
-                : null
-              return (
-                <div key={asin} style={{
-                  display: 'flex', alignItems: 'center', gap: '0.3rem',
-                  padding: '0.2rem 0.5rem',
-                  borderRadius: 4,
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-panel)',
-                  fontSize: '0.75em',
-                  fontFamily: 'monospace',
-                  color: p.status === 'error' || p.status === 'blocked' ? '#c05820' : 'var(--text-secondary)',
-                }}>
-                  {icon}
-                  {asin}
-                  {p.status === 'complete' && (
-                    <span style={{ color: 'var(--text-muted)' }}>
-                      {p.carouselCount}img / {p.aplusCount}A+
-                    </span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Live log */}
-        <div style={{
-          flex: 1, overflowY: 'auto',
-          padding: '0.75rem 1.25rem',
-          fontFamily: 'monospace',
-          fontSize: '0.8em',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.18rem',
-        }}>
-          {log.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', fontFamily: 'inherit', marginTop: '3rem', textAlign: 'center', lineHeight: 2 }}>
-              Add ASINs and hit Run Analysis to begin.
-              <br />
-              <span style={{ opacity: 0.6 }}>3–5 min per product · human-paced · headed Chromium</span>
-            </div>
-          )}
-          {log.map((entry, i) => (
-            <div key={i} style={{ display: 'flex', gap: '0.75rem', color: LOG_COLORS[entry.level] || LOG_COLORS.info }}>
-              <span style={{ color: 'var(--text-muted)', flexShrink: 0, userSelect: 'none' }}>{entry.ts}</span>
-              <span style={{ wordBreak: 'break-all' }}>{entry.msg}</span>
-            </div>
-          ))}
-          <div ref={logEndRef} />
-        </div>
-
-        {/* Status bar */}
+        {/* Tab bar */}
         <div style={{
           flexShrink: 0,
-          borderTop: '1px solid var(--border)',
-          padding: '0.4rem 1.25rem',
+          borderBottom: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
-          gap: '0.5rem',
-          fontSize: '0.75em',
-          color: statusDot.color,
+          padding: '0 1rem',
+          gap: '0.1rem',
+          background: 'var(--bg-secondary)',
         }}>
-          <span style={{
-            width: 7, height: 7, borderRadius: '50%',
-            background: statusDot.color,
-            display: 'inline-block',
-            animation: statusDot.pulse ? 'spin 1.2s ease-in-out infinite' : 'none',
-          }} />
-          {statusDot.label}
-          {runId && <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>{runId}</span>}
+          {['run', 'results'].map(tab => {
+            const isActive = activeTab === tab
+            const isDisabled = tab === 'results' && runStatus !== 'complete' && runStatus !== 'stopped'
+            return (
+              <button
+                key={tab}
+                onClick={() => !isDisabled && setActiveTab(tab)}
+                style={{
+                  padding: '0.5rem 0.9rem',
+                  border: 'none',
+                  borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+                  background: 'transparent',
+                  color: isDisabled ? 'var(--text-muted)' : isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                  cursor: isDisabled ? 'default' : 'pointer',
+                  fontSize: '0.8em',
+                  fontWeight: isActive ? 600 : 400,
+                  marginBottom: -1,
+                }}
+              >
+                {tab === 'run' ? 'Run' : 'Results'}
+              </button>
+            )
+          })}
         </div>
+
+        {activeTab === 'run' && <>
+          {/* ASIN status row — shown once run starts */}
+          {Object.keys(asinProgress).length > 0 && (
+            <div style={{
+              flexShrink: 0,
+              borderBottom: '1px solid var(--border)',
+              padding: '0.5rem 1rem',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.4rem',
+            }}>
+              {asins.map(({ asin }) => {
+                const p = asinProgress[asin]
+                if (!p) return null
+                const icon = p.status === 'complete' ? <CheckCircle size={10} style={{ color: 'var(--accent)' }} />
+                  : p.status === 'running' ? <Loader size={10} style={{ color: '#e0a040' }} />
+                  : p.status === 'error' || p.status === 'blocked' ? <AlertCircle size={10} style={{ color: '#c05820' }} />
+                  : null
+                return (
+                  <div key={asin} style={{
+                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                    padding: '0.2rem 0.5rem',
+                    borderRadius: 4,
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg-panel)',
+                    fontSize: '0.75em',
+                    fontFamily: 'monospace',
+                    color: p.status === 'error' || p.status === 'blocked' ? '#c05820' : 'var(--text-secondary)',
+                  }}>
+                    {icon}
+                    {asin}
+                    {p.status === 'complete' && (
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {p.carouselCount}img / {p.aplusCount}A+
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Live log */}
+          <div style={{
+            flex: 1, overflowY: 'auto',
+            padding: '0.75rem 1.25rem',
+            fontFamily: 'monospace',
+            fontSize: '0.8em',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.18rem',
+          }}>
+            {log.length === 0 && (
+              <div style={{ color: 'var(--text-muted)', fontFamily: 'inherit', marginTop: '3rem', textAlign: 'center', lineHeight: 2 }}>
+                Add ASINs and hit Run Analysis to begin.
+                <br />
+                <span style={{ opacity: 0.6 }}>3–5 min per product · human-paced · headed Chromium</span>
+              </div>
+            )}
+            {log.map((entry, i) => (
+              <div key={i} style={{ display: 'flex', gap: '0.75rem', color: LOG_COLORS[entry.level] || LOG_COLORS.info }}>
+                <span style={{ color: 'var(--text-muted)', flexShrink: 0, userSelect: 'none' }}>{entry.ts}</span>
+                <span style={{ wordBreak: 'break-all' }}>{entry.msg}</span>
+              </div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
+
+          {/* Status bar */}
+          <div style={{
+            flexShrink: 0,
+            borderTop: '1px solid var(--border)',
+            padding: '0.4rem 1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontSize: '0.75em',
+            color: statusDot.color,
+          }}>
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: statusDot.color,
+              display: 'inline-block',
+              animation: statusDot.pulse ? 'spin 1.2s ease-in-out infinite' : 'none',
+            }} />
+            {statusDot.label}
+            {runId && <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>{runId}</span>}
+          </div>
+        </>}
+
+        {activeTab === 'results' && (
+          <GapResultView runId={runId} asins={asins} asinProgress={asinProgress} />
+        )}
       </div>
     </div>
   )

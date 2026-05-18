@@ -806,6 +806,27 @@ app.post('/api/gap-analyzer/run/:runId/stop', (req, res) => {
   res.json({ status: 'stopped' })
 })
 
+// GET /api/gap-analyzer/captures/:runId/:asin  — list captured files + product data
+app.get('/api/gap-analyzer/captures/:runId/:asin', (req, res) => {
+  const { runId, asin } = req.params
+  if ([runId, asin].some(p => p.includes('..') || p.includes('/'))) {
+    return res.status(400).json({ error: 'Invalid path' })
+  }
+  const dir = path.join(__dirname, 'captures', runId, asin)
+  if (!fs.existsSync(dir)) return res.json({ files: [], productData: null })
+
+  let files = []
+  try { files = fs.readdirSync(dir).filter(f => f.endsWith('.png')).sort() } catch { /* skip */ }
+
+  let productData = null
+  const pdPath = path.join(dir, 'product-data.json')
+  if (fs.existsSync(pdPath)) {
+    try { productData = JSON.parse(fs.readFileSync(pdPath, 'utf-8')) } catch { /* skip */ }
+  }
+
+  res.json({ files, productData })
+})
+
 // GET /api/gap-analyzer/captures/:runId/:asin/:filename  — serve captured screenshots
 app.get('/api/gap-analyzer/captures/:runId/:asin/:filename', (req, res) => {
   const { runId, asin, filename } = req.params
