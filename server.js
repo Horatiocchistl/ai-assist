@@ -193,10 +193,7 @@ async function resolveSkillDir(entry) {
   const trimmed = entry.trim()
   if (!trimmed) return null
   if (!isRemoteSkillDir(trimmed)) {
-    const resolved = trimmed.startsWith('./') || trimmed.startsWith('../')
-      ? path.resolve(__dirname, trimmed)
-      : trimmed
-    return fs.existsSync(resolved) ? resolved : null
+    return fs.existsSync(trimmed) ? trimmed : null
   }
   try {
     return await syncGitHubUrl(trimmed)
