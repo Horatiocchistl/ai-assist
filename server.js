@@ -1047,6 +1047,46 @@ app.get('/api/gap-analyzer/runs', (req, res) => {
   }
 })
 
+// POST /api/gap-analyzer/run/:runId/analyze  — SSE, runs LLM gap analysis on one ASIN
+app.post('/api/gap-analyzer/run/:runId/analyze', async (req, res) => {
+  const { runId } = req.params
+  const { asin, engagementId } = req.body
+  if (!asin || !engagementId) return res.status(400).json({ error: 'asin and engagementId required' })
+
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  if (res.flushHeaders) res.flushHeaders()
+
+  const emit = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+  }
+
+  try {
+    const { analyzeLlmGaps } = await import('./browser-agent/llm-gap-analyzer.js')
+    await analyzeLlmGaps(runId, asin, engagementId, emit)
+  } catch (err) {
+    console.error('[llm-gap-analyzer] error:', err)
+    emit('error', { message: err.message })
+  } finally {
+    res.end()
+  }
+})
+
+// GET /api/gap-analyzer/skill-schema  — returns schema.json from the gap-analysis skill
+app.get('/api/gap-analyzer/skill-schema', async (req, res) => {
+  try {
+    const skills = await scanSkills()
+    const skill = skills.find(s => s.name === 'gap-analysis')
+    if (!skill) return res.status(404).json({ error: 'gap-analysis skill not found' })
+    const schemaPath = path.join(path.dirname(skill.location), 'references', 'schema.json')
+    if (!fs.existsSync(schemaPath)) return res.status(404).json({ error: 'schema.json not found' })
+    res.json(JSON.parse(fs.readFileSync(schemaPath, 'utf-8')))
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ─── End Gap Analyzer ──────────────────────────────────────────────────────────
 
 // Catch-all: serve index.html for client-side routing (production)

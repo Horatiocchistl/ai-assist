@@ -1,0 +1,29 @@
+{
+  "categories": [
+    { "id": "image_assets", "label": "Image Assets" },
+    { "id": "text_on_images", "label": "Text on Images" },
+    { "id": "carousel_order", "label": "Carousel Order" },
+    { "id": "aplus_content", "label": "A+ Content" },
+    { "id": "product_text", "label": "Product Text" },
+    { "id": "image_text_diff", "label": "Image Text Differences" },
+    { "id": "cpg_custom", "label": "CPG Custom" }
+  ],
+  "gap_types": [
+    { "id": "image_missing", "label": "Image Missing" },
+    { "id": "image_wrong", "label": "Wrong Image" },
+    { "id": "color_mismatch", "label": "Color Mismatch" },
+    { "id": "layout_shift", "label": "Layout Shift" },
+    { "id": "asset_swapped", "label": "Asset Swapped" },
+    { "id": "extra_image", "label": "Extra Image" },
+    { "id": "copy_drift", "label": "Copy Drift" },
+    { "id": "text_on_image_diff", "label": "Image Text Differs" },
+    { "id": "order_mismatch", "label": "Order Mismatch" },
+    { "id": "content_missing", "label": "Content Missing" },
+    { "id": "custom_finding", "label": "Custom Finding" }
+  ],
+  "severity_levels": [
+    { "id": "flag", "label": "Flag", "color": "#c05820" },
+    { "id": "review", "label": "Review", "color": "#b07d2a" },
+    { "id": "note", "label": "Note", "color": "#5a7a5a" }
+  ]
+}

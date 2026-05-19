@@ -1,15 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import supabase from '../lib/supabase.js'
 
-/**
- * Hook for loading gap analysis results from the gaps table
- * @param {string} runId - The run ID
- * @param {string|null} asin - Optional ASIN to filter gaps for a specific product
- * @returns {{gaps: Array, loading: boolean}}
- */
 export function useGaps(runId, asin = null) {
   const [gaps, setGaps] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     async function loadGaps() {
@@ -37,7 +32,9 @@ export function useGaps(runId, asin = null) {
     }
 
     loadGaps()
-  }, [runId, asin])
+  }, [runId, asin, refreshKey])
 
-  return { gaps, loading }
+  const refetch = useCallback(() => setRefreshKey(k => k + 1), [])
+
+  return { gaps, loading, refetch }
 }

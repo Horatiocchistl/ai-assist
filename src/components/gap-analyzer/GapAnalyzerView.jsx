@@ -324,6 +324,8 @@ export default function GapAnalyzerView() {
         <LlmAnalysisView
           runId={runId}
           asin={llmAnalysisAsin}
+          liveFiles={liveFiles}
+          engagementId={engagement?.id}
           onBack={() => setLlmAnalysisAsin(null)}
         />
       </GapResultErrorBoundary>
@@ -576,10 +578,13 @@ export default function GapAnalyzerView() {
               </div>
             )}
             <GapResultView
+              runId={runId}
+              engagementId={engagement?.id}
               plans={plans}
               asinProgress={asinProgress}
               liveFiles={liveFiles}
               onSelect={setDetailAsin}
+              onAnalyzeAsin={setLlmAnalysisAsin}
             />
           </GapResultErrorBoundary>
         )}

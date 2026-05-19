@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { CheckCircle, AlertCircle, Loader, Search } from 'lucide-react'
 import { firstLiveImagePath, getAsinLiveFiles } from '../../hooks/useGapSessions.js'
 import { getLiveSignedUrl, getSignedUrl, sortPlanImages } from '../../hooks/usePlannedEngagement.js'
+import supabase from '../../lib/supabase.js'
+import { getGapApiBase } from '../../lib/gapApi.js'
 
 const SUB_FILTERS = [
   { id: 'all', label: 'All Results' },
@@ -9,7 +11,6 @@ const SUB_FILTERS = [
   { id: 'analyzed', label: 'Analyzed' },
 ]
 
-/** Run capture finished — progress row and/or live-captures storage for this ASIN. */
 function progressForAsin(asinProgress, asin, liveFiles) {
   const p = asinProgress?.[asin]
   if (p?.status === 'complete' || p?.status === 'captured') return p
@@ -25,13 +26,6 @@ function progressForAsin(asinProgress, asin, liveFiles) {
     else if (/^aplus_\d+/i.test(name)) aplusCount++
   }
   return { status: 'complete', carouselCount, aplusCount }
-}
-
-function isAnalyzed(asinProgress, asin, liveFiles) {
-  // TODO: Phase 2 - return true only if AI/LLM analysis has run for this ASIN
-  // "Analyzed" means AI compared Pre-Run baseline vs live captures and generated findings
-  // For now, nothing is analyzed until Agent Analysis button feature is hooked up
-  return false
 }
 
 function buildAllItems(plans, liveFiles) {
@@ -57,27 +51,36 @@ function formatMeta(plan, asinProgress, asin, liveFiles) {
   return n > 0 ? `${n} img` : ''
 }
 
-function AsinCard({ asin, plan, asinProgress, liveFiles, thumbUrl, onSelect }) {
+function AsinCard({ asin, plan, asinProgress, liveFiles, thumbUrl, onSelect, analyzed,
+                    selectionMode, selected, onToggle, analyzing }) {
   const p = progressForAsin(asinProgress, asin, liveFiles)
-  const analyzed = isAnalyzed(asinProgress, asin, liveFiles)
   const hasCaptureData = p?.status === 'complete' || p?.status === 'captured'
+
+  function handleClick() {
+    if (selectionMode) {
+      if (!analyzed) onToggle?.(asin)
+    } else {
+      if (hasCaptureData) onSelect?.(asin)
+    }
+  }
 
   return (
     <button
       type="button"
-      onClick={() => hasCaptureData && onSelect?.(asin)}
+      onClick={handleClick}
       style={{
         display: 'flex',
         flexDirection: 'column',
-        border: '1px solid var(--border)',
+        border: selected ? '2px solid #6b21a8' : '1px solid var(--border)',
         borderRadius: 8,
         overflow: 'hidden',
         background: 'var(--bg-panel)',
-        cursor: hasCaptureData ? 'pointer' : 'default',
+        cursor: (selectionMode && !analyzed) || hasCaptureData ? 'pointer' : 'default',
         textAlign: 'left',
         padding: 0,
         width: '100%',
         opacity: (p?.status === 'error' || p?.status === 'blocked') ? 0.55 : 1,
+        position: 'relative',
       }}
     >
       {/* Eyebrow status label */}
@@ -89,9 +92,33 @@ function AsinCard({ asin, plan, asinProgress, liveFiles, thumbUrl, onSelect }) {
         textTransform: 'uppercase',
         background: analyzed ? 'var(--accent)' : 'var(--bg-secondary)',
         color: analyzed ? '#fff' : 'var(--text-muted)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
       }}>
-        {analyzed ? 'Analyzed' : 'Not Analyzed'}
+        <span>{analyzing ? 'Analyzing…' : analyzed ? 'Analyzed' : 'Not Analyzed'}</span>
+        {selectionMode && !analyzed && (
+          <span style={{
+            width: 14,
+            height: 14,
+            borderRadius: 3,
+            border: '2px solid',
+            borderColor: selected ? '#6b21a8' : 'var(--text-muted)',
+            background: selected ? '#6b21a8' : 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            {selected && (
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                <path d="M1 4l2 2 4-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </span>
+        )}
       </div>
+
       <div style={{
         width: '100%',
         aspectRatio: '4/3',
@@ -115,6 +142,7 @@ function AsinCard({ asin, plan, asinProgress, liveFiles, thumbUrl, onSelect }) {
           </span>
         )}
       </div>
+
       <div style={{
         padding: '0.5rem 0.65rem',
         background: '#0a0a0a',
@@ -153,36 +181,53 @@ function AsinCard({ asin, plan, asinProgress, liveFiles, thumbUrl, onSelect }) {
 }
 
 export default function GapResultView({
+  runId,
+  engagementId,
   plans = [],
   asinProgress = {},
   liveFiles = [],
   onSelect,
+  onAnalyzeAsin,
 }) {
   const [subFilter, setSubFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [thumbUrls, setThumbUrls] = useState({})
+  const [analyzedAsins, setAnalyzedAsins] = useState(new Set())
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedAsins, setSelectedAsins] = useState(new Set())
+  const [analyzingAsins, setAnalyzingAsins] = useState(new Set())
+  const abortRefs = useRef({})
 
   const allItems = useMemo(() => buildAllItems(plans, liveFiles), [plans, liveFiles])
+
+  // Load analyzed state from gaps table
+  useEffect(() => {
+    if (!runId) return
+    supabase
+      .from('gaps')
+      .select('asin')
+      .eq('run_id', runId)
+      .then(({ data }) => {
+        if (data?.length) {
+          setAnalyzedAsins(new Set(data.map(r => r.asin)))
+        }
+      })
+  }, [runId])
 
   const searchLower = search.trim().toLowerCase()
 
   const filteredItems = useMemo(() => {
     let items = allItems
-
-    // Apply search filter
     if (searchLower) {
       items = items.filter(({ asin }) => asin.toLowerCase().includes(searchLower))
     }
-
-    // Apply sub-filter
     if (subFilter === 'not_analyzed') {
-      items = items.filter(({ asin }) => !isAnalyzed(asinProgress, asin, liveFiles))
+      items = items.filter(({ asin }) => !analyzedAsins.has(asin))
     } else if (subFilter === 'analyzed') {
-      items = items.filter(({ asin }) => isAnalyzed(asinProgress, asin, liveFiles))
+      items = items.filter(({ asin }) => analyzedAsins.has(asin))
     }
-
     return items
-  }, [allItems, searchLower, subFilter, asinProgress, liveFiles])
+  }, [allItems, searchLower, subFilter, analyzedAsins])
 
   useEffect(() => {
     let cancelled = false
@@ -191,7 +236,7 @@ export default function GapResultView({
       for (const { asin, plan } of allItems) {
         const p = progressForAsin(asinProgress, asin, liveFiles)
         const hasCaptureData = p?.status === 'complete' || p?.status === 'captured'
-        
+
         if (hasCaptureData) {
           const storagePath = firstLiveImagePath(liveFiles, asin)
           if (storagePath) {
@@ -212,6 +257,80 @@ export default function GapResultView({
     return () => { cancelled = true }
   }, [allItems, asinProgress, liveFiles])
 
+  function toggleAsinSelection(asin) {
+    setSelectedAsins(prev => {
+      const next = new Set(prev)
+      if (next.has(asin)) next.delete(asin)
+      else next.add(asin)
+      return next
+    })
+  }
+
+  function handleAgentAnalysisClick() {
+    if (!selectionMode) {
+      setSelectionMode(true)
+      setSelectedAsins(new Set())
+      return
+    }
+    if (selectedAsins.size === 0) {
+      setSelectionMode(false)
+      return
+    }
+    // Trigger analysis for selected ASINs
+    runAnalysis([...selectedAsins])
+    setSelectionMode(false)
+    setSelectedAsins(new Set())
+  }
+
+  function runAnalysis(asins) {
+    for (const asin of asins) {
+      setAnalyzingAsins(prev => new Set([...prev, asin]))
+      const controller = new AbortController()
+      abortRefs.current[asin] = controller
+
+      fetch(`${getGapApiBase()}/run/${runId}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asin, engagementId }),
+        signal: controller.signal,
+      }).then(async res => {
+        // Drain the SSE stream
+        const reader = res.body?.getReader()
+        if (!reader) return
+        const dec = new TextDecoder()
+        while (true) {
+          const { done } = await reader.read()
+          if (done) break
+        }
+      }).catch(() => {/* aborted or network error */}).finally(() => {
+        setAnalyzingAsins(prev => {
+          const next = new Set(prev)
+          next.delete(asin)
+          return next
+        })
+        setAnalyzedAsins(prev => new Set([...prev, asin]))
+        if (onAnalyzeAsin) onAnalyzeAsin(asin)
+        delete abortRefs.current[asin]
+      })
+    }
+  }
+
+  const anySelected = selectedAsins.size > 0
+  const buttonLabel = selectionMode
+    ? anySelected ? 'Ready to Analyze' : 'Cancel'
+    : 'Agent Analysis'
+  const buttonStyle = {
+    padding: '0.45rem 0.85rem',
+    border: 'none',
+    borderRadius: 6,
+    fontWeight: 600,
+    fontSize: '0.82em',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    background: selectionMode && anySelected ? '#6b21a8' : 'var(--accent)',
+    color: '#fff',
+  }
+
   function renderCard({ asin, plan }) {
     return (
       <AsinCard
@@ -222,6 +341,11 @@ export default function GapResultView({
         liveFiles={liveFiles}
         thumbUrl={thumbUrls[asin]}
         onSelect={onSelect}
+        analyzed={analyzedAsins.has(asin)}
+        selectionMode={selectionMode}
+        selected={selectedAsins.has(asin)}
+        onToggle={toggleAsinSelection}
+        analyzing={analyzingAsins.has(asin)}
       />
     )
   }
@@ -261,13 +385,17 @@ export default function GapResultView({
         })}
       </div>
 
-      {/* Search bar */}
+      {/* Search bar + Agent Analysis button */}
       <div style={{
         flexShrink: 0,
         padding: '0.75rem 1rem',
         borderBottom: '1px solid var(--border)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem',
       }}>
         <div style={{
+          flex: 1,
           display: 'flex',
           alignItems: 'center',
           gap: '0.5rem',
@@ -291,39 +419,32 @@ export default function GapResultView({
             }}
           />
         </div>
-      </div>
-
-      {/* Agent Analysis button */}
-      <div style={{
-        flexShrink: 0,
-        padding: '0.75rem 1rem',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        justifyContent: 'flex-end',
-      }}>
         <button
           type="button"
-          style={{
-            padding: '0.45rem 0.85rem',
-            background: 'var(--accent)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: '0.82em',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
+          onClick={handleAgentAnalysisClick}
+          disabled={!runId || !engagementId}
+          style={buttonStyle}
         >
-          Agent Analysis
+          {buttonLabel}
         </button>
       </div>
 
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '1rem',
-      }}>
+      {selectionMode && (
+        <div style={{
+          flexShrink: 0,
+          padding: '0.4rem 1rem',
+          background: 'rgba(107,33,168,0.08)',
+          borderBottom: '1px solid var(--border)',
+          fontSize: '0.75em',
+          color: 'var(--text-muted)',
+        }}>
+          {anySelected
+            ? `${selectedAsins.size} ASIN${selectedAsins.size > 1 ? 's' : ''} selected — click "Ready to Analyze" to run`
+            : 'Select ASINs to analyze'}
+        </div>
+      )}
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
         {filteredItems.length === 0 && allItems.length === 0 && (
           <div style={{ color: 'var(--text-muted)', fontSize: '0.8em', textAlign: 'center', paddingTop: '2rem' }}>
             No results yet

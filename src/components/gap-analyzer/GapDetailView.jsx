@@ -324,9 +324,6 @@ export default function GapDetailView({ asin, liveFiles = [], onBack, onViewComp
   const [lightbox, setLightbox] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // Determine if this ASIN has been analyzed (for showing LLM Analysis CTA)
-  // For now, always false until Phase 2 implements actual analysis tracking
-  const analyzed = false // TODO: Phase 2 - check if LLM analysis has run for this ASIN
 
   useEffect(() => {
     let cancelled = false
@@ -410,23 +407,21 @@ export default function GapDetailView({ asin, liveFiles = [], onBack, onViewComp
             >
               View Comparison
             </button>
-            {analyzed && (
-              <button
-                onClick={() => onViewLlmAnalysis?.(asin)}
-                style={{
-                  padding: '0.35rem 0.65rem',
-                  border: 'none',
-                  borderRadius: 6,
-                  background: 'var(--accent)',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  fontSize: '0.75em',
-                  fontWeight: 600,
-                }}
-              >
-                View LLM Analysis
-              </button>
-            )}
+            <button
+              onClick={() => onViewLlmAnalysis?.(asin)}
+              style={{
+                padding: '0.35rem 0.65rem',
+                border: 'none',
+                borderRadius: 6,
+                background: 'var(--accent)',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '0.75em',
+                fontWeight: 600,
+              }}
+            >
+              LLM Analysis
+            </button>
           </div>
         )}
       </div>
