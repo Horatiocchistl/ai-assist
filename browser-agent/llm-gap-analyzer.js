@@ -77,7 +77,8 @@ async function buildSystemPrompt() {
   try {
     const main = await fs.readFile(path.join(skillPath, 'SKILL.md'), 'utf-8')
     parts.push(main)
-  } catch { /* skill not found */ }
+    console.log(`[llm-gap] skill loaded ${main.length} bytes`)
+  } catch { console.warn('[llm-gap] SKILL.md not found at', skillPath) }
 
   for (const ref of ['sections.md', 'gap-types.md', 'severity.md', 'cpg-context.md']) {
     try {
@@ -232,16 +233,14 @@ async function toolReadProductData(supabase, runId, asin) {
 
 async function toolWriteGapFinding(supabase, runId, asin, finding) {
   const { category, section, gap_type, severity, description } = finding
-  const { error } = await supabase.from('gaps').insert({
-    run_id: runId,
-    asin,
-    category: category || null,
-    section: section || null,
-    gap_type: gap_type || null,
-    severity: severity || null,
-    description: description || null,
-  })
-  if (error) throw new Error(`Gap insert failed: ${error.message}`)
+  const payload = { run_id: runId, asin, category: category || null, section: section || null, gap_type: gap_type || null, severity: severity || null, description: description || null }
+  console.log('[llm-gap] write_gap_finding payload:', JSON.stringify(payload))
+  const { error } = await supabase.from('gaps').insert(payload)
+  if (error) {
+    console.error('[llm-gap] write_gap_finding error:', error.message, 'code:', error.code, 'details:', error.details)
+    throw new Error(`Gap insert failed: ${error.message}`)
+  }
+  console.log('[llm-gap] write_gap_finding ok')
   return { ok: true }
 }
 

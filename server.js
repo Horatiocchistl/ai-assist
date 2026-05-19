@@ -1058,6 +1058,8 @@ app.post('/api/gap-analyzer/run/:runId/analyze', async (req, res) => {
   res.setHeader('Connection', 'keep-alive')
   if (res.flushHeaders) res.flushHeaders()
 
+  console.log(`[gap-analyze] start runId=${runId} asin=${asin} engagementId=${engagementId}`)
+
   const emit = (obj) => {
     res.write(`event: ${obj.type}\ndata: ${JSON.stringify(obj)}\n\n`)
   }
@@ -1065,9 +1067,10 @@ app.post('/api/gap-analyzer/run/:runId/analyze', async (req, res) => {
   try {
     const { analyzeLlmGaps } = await import('./browser-agent/llm-gap-analyzer.js')
     await analyzeLlmGaps(runId, asin, engagementId, emit)
+    console.log(`[gap-analyze] done runId=${runId} asin=${asin}`)
   } catch (err) {
-    console.error('[llm-gap-analyzer] error:', err)
-    emit('error', { message: err.message })
+    console.error(`[gap-analyze] error runId=${runId} asin=${asin}:`, err.message, err.stack)
+    emit({ type: 'error', message: err.message })
   } finally {
     res.end()
   }
