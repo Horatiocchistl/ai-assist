@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { ArrowLeft, X, ChevronDown, ChevronRight } from 'lucide-react'
 import { useGaps } from '../../hooks/useGaps.js'
 import { getAsinLiveFiles } from '../../hooks/useGapSessions.js'
@@ -241,91 +241,27 @@ function CategorySection({ category, gaps, schema, defaultOpen = true }) {
   )
 }
 
-function AnalysisPanel({ gaps, schema, analyzing, log, onRunAnalysis, hasRun }) {
+function AnalysisPanel({ gaps, schema }) {
   const categories = schema?.categories || []
-  const logEndRef = useRef(null)
 
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [log])
-
-  if (analyzing) {
-    return (
-      <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        <div style={{ fontSize: '0.78em', fontWeight: 600, color: 'var(--text-primary)' }}>
-          Analyzing…
-        </div>
-        <div style={{
-          background: 'var(--bg-primary)',
-          border: '1px solid var(--border)',
-          borderRadius: 6,
-          padding: '0.75rem',
-          fontFamily: 'monospace',
-          fontSize: '0.72em',
-          color: 'var(--text-secondary)',
-          lineHeight: 1.6,
-          maxHeight: 300,
-          overflowY: 'auto',
-        }}>
-          {log.map((line, i) => <div key={i}>{line}</div>)}
-          <div ref={logEndRef} />
-        </div>
-      </div>
-    )
-  }
-
-  if (!hasRun && gaps.length === 0) {
+  if (gaps.length === 0) {
     return (
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: 'center', gap: '1rem', padding: '3rem 1.5rem',
+        justifyContent: 'center', gap: '0.75rem', padding: '3rem 1.5rem',
       }}>
-        <div style={{ fontSize: '0.82em', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.6 }}>
-          No analysis yet. Run the LLM to generate gap findings for this ASIN.
+        <div style={{ fontSize: '0.85em', fontWeight: 600, color: 'var(--text-primary)' }}>
+          No findings recorded
         </div>
-        <button
-          type="button"
-          onClick={onRunAnalysis}
-          style={{
-            padding: '0.55rem 1.1rem',
-            border: 'none',
-            borderRadius: 6,
-            background: 'var(--accent)',
-            color: '#fff',
-            fontSize: '0.82em',
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          Run LLM Analysis
-        </button>
+        <div style={{ fontSize: '0.78em', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.6, maxWidth: 320 }}>
+          The analysis ran but no gap findings were written. Apply the database migration if you haven't yet — run <code>supabase/migrations/010_gaps_run_id_text.sql</code> in the Supabase SQL editor.
+        </div>
       </div>
     )
   }
 
   return (
     <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: 0 }}>
-      {/* Re-run button when findings exist */}
-      {gaps.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-          <button
-            type="button"
-            onClick={onRunAnalysis}
-            style={{
-              padding: '0.35rem 0.75rem',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              background: 'transparent',
-              color: 'var(--text-secondary)',
-              fontSize: '0.75em',
-              cursor: 'pointer',
-            }}
-          >
-            Re-run Analysis
-          </button>
-        </div>
-      )}
-
       {categories.map(cat => {
         const catGaps = gaps.filter(g => g.category === cat.id)
         return (
@@ -339,7 +275,6 @@ function AnalysisPanel({ gaps, schema, analyzing, log, onRunAnalysis, hasRun }) 
         )
       })}
 
-      {/* Uncategorized fallback */}
       {gaps.filter(g => !categories.find(c => c.id === g.category)).length > 0 && (
         <CategorySection
           category={{ id: '__other', label: 'Other' }}
@@ -354,14 +289,11 @@ function AnalysisPanel({ gaps, schema, analyzing, log, onRunAnalysis, hasRun }) 
 
 // ─── Main view ────────────────────────────────────────────────────────────────
 
-export default function LlmAnalysisView({ runId, asin, liveFiles = [], engagementId, onBack }) {
-  const { gaps, loading: gapsLoading, refetch } = useGaps(runId, asin)
+export default function LlmAnalysisView({ runId, asin, liveFiles = [], onBack }) {
+  const { gaps, loading: gapsLoading } = useGaps(runId, asin)
   const [schema, setSchema] = useState(null)
   const [imageUrls, setImageUrls] = useState({})
   const [lightbox, setLightbox] = useState(null)
-  const [analyzing, setAnalyzing] = useState(false)
-  const [log, setLog] = useState([])
-  const [hasRun, setHasRun] = useState(false)
 
   // Fetch skill schema
   useEffect(() => {
@@ -387,54 +319,6 @@ export default function LlmAnalysisView({ runId, asin, liveFiles = [], engagemen
     load()
     return () => { cancelled = true }
   }, [liveFiles, asin])
-
-  async function runAnalysis() {
-    if (!runId || !engagementId || analyzing) return
-    setAnalyzing(true)
-    setLog([])
-    setHasRun(true)
-
-    try {
-      const res = await fetch(`${getGapApiBase()}/run/${runId}/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ asin, engagementId }),
-      })
-
-      const reader = res.body?.getReader()
-      const dec = new TextDecoder()
-      let buf = ''
-
-      while (reader) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += dec.decode(value, { stream: true })
-        const parts = buf.split('\n\n')
-        buf = parts.pop()
-        for (const part of parts) {
-          const evLine = part.match(/^event: (.+)/m)
-          const dataLine = part.match(/^data: (.+)/m)
-          if (!dataLine) continue
-          try {
-            const payload = JSON.parse(dataLine[1])
-            const evName = evLine?.[1] || 'progress'
-            if (evName === 'progress' || evName === 'log') {
-              setLog(l => [...l, payload.message || payload.text || JSON.stringify(payload)])
-            } else if (evName === 'complete') {
-              setLog(l => [...l, '✓ Analysis complete'])
-            } else if (evName === 'error') {
-              setLog(l => [...l, `Error: ${payload.message}`])
-            }
-          } catch { /* non-JSON line */ }
-        }
-      }
-    } catch (err) {
-      setLog(l => [...l, `Error: ${err.message}`])
-    } finally {
-      setAnalyzing(false)
-      refetch()
-    }
-  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', background: 'var(--bg-primary)' }}>
@@ -469,26 +353,6 @@ export default function LlmAnalysisView({ runId, asin, liveFiles = [], engagemen
         <span style={{ color: 'var(--text-muted)', fontSize: '0.75em', marginLeft: 'auto' }}>
           LLM Analysis
         </span>
-        {!analyzing && (
-          <button
-            type="button"
-            onClick={runAnalysis}
-            disabled={!engagementId}
-            style={{
-              padding: '0.3rem 0.7rem',
-              border: 'none',
-              borderRadius: 6,
-              background: 'var(--accent)',
-              color: '#fff',
-              fontSize: '0.75em',
-              fontWeight: 600,
-              cursor: engagementId ? 'pointer' : 'not-allowed',
-              opacity: engagementId ? 1 : 0.5,
-            }}
-          >
-            {gaps.length > 0 ? 'Re-run' : 'Run Analysis'}
-          </button>
-        )}
       </div>
 
       {/* Two-panel body */}
@@ -510,14 +374,7 @@ export default function LlmAnalysisView({ runId, asin, liveFiles = [], engagemen
               Loading…
             </div>
           ) : (
-            <AnalysisPanel
-              gaps={gaps}
-              schema={schema}
-              analyzing={analyzing}
-              log={log}
-              onRunAnalysis={runAnalysis}
-              hasRun={hasRun}
-            />
+            <AnalysisPanel gaps={gaps} schema={schema} />
           )}
         </div>
       </div>
