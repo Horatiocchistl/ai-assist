@@ -1058,8 +1058,8 @@ app.post('/api/gap-analyzer/run/:runId/analyze', async (req, res) => {
   res.setHeader('Connection', 'keep-alive')
   if (res.flushHeaders) res.flushHeaders()
 
-  const emit = (event, data) => {
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+  const emit = (obj) => {
+    res.write(`event: ${obj.type}\ndata: ${JSON.stringify(obj)}\n\n`)
   }
 
   try {

@@ -52,7 +52,8 @@ function formatMeta(plan, asinProgress, asin, liveFiles) {
 }
 
 function AsinCard({ asin, plan, asinProgress, liveFiles, thumbUrl, onSelect, analyzed,
-                    selectionMode, selected, onToggle, analyzing }) {
+                    selectionMode, selected, onToggle, analyzing,
+                    statusMsg, liveGapCount, findingCount }) {
   const p = progressForAsin(asinProgress, asin, liveFiles)
   const hasCaptureData = p?.status === 'complete' || p?.status === 'captured'
 
@@ -64,6 +65,9 @@ function AsinCard({ asin, plan, asinProgress, liveFiles, thumbUrl, onSelect, ana
     }
   }
 
+  const borderColor = analyzing ? 'var(--accent)' : selected ? '#6b21a8' : 'var(--border)'
+  const borderWidth = analyzing || selected ? '2px' : '1px'
+
   return (
     <button
       type="button"
@@ -71,7 +75,7 @@ function AsinCard({ asin, plan, asinProgress, liveFiles, thumbUrl, onSelect, ana
       style={{
         display: 'flex',
         flexDirection: 'column',
-        border: selected ? '2px solid #6b21a8' : '1px solid var(--border)',
+        border: `${borderWidth} solid ${borderColor}`,
         borderRadius: 8,
         overflow: 'hidden',
         background: 'var(--bg-panel)',
@@ -90,14 +94,18 @@ function AsinCard({ asin, plan, asinProgress, liveFiles, thumbUrl, onSelect, ana
         fontWeight: 600,
         letterSpacing: '0.03em',
         textTransform: 'uppercase',
-        background: analyzed ? 'var(--accent)' : 'var(--bg-secondary)',
-        color: analyzed ? '#fff' : 'var(--text-muted)',
+        background: analyzing ? 'var(--accent)' : analyzed ? 'var(--accent)' : 'var(--bg-secondary)',
+        color: analyzing || analyzed ? '#fff' : 'var(--text-muted)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        gap: '0.35rem',
       }}>
-        <span>{analyzing ? 'Analyzing…' : analyzed ? 'Analyzed' : 'Not Analyzed'}</span>
-        {selectionMode && !analyzed && (
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+          {analyzing && <Loader size={9} style={{ flexShrink: 0, animation: 'spin 1s linear infinite' }} />}
+          {analyzing ? 'Analyzing…' : analyzed ? 'Analyzed' : 'Not Analyzed'}
+        </span>
+        {selectionMode && !analyzed && !analyzing && (
           <span style={{
             width: 14,
             height: 14,
@@ -153,6 +161,28 @@ function AsinCard({ asin, plan, asinProgress, liveFiles, thumbUrl, onSelect, ana
         <div style={{ fontFamily: 'monospace', fontSize: '0.8em', fontWeight: 700, color: 'var(--text-primary)' }}>
           {asin}
         </div>
+
+        {/* Live step message while analyzing */}
+        {analyzing && statusMsg && (
+          <div style={{
+            fontFamily: 'monospace',
+            fontSize: '0.62em',
+            color: 'var(--text-muted)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            {statusMsg}
+          </div>
+        )}
+
+        {/* Finding count line */}
+        {analyzed && findingCount != null && (
+          <div style={{ fontSize: '0.7em', color: 'var(--text-muted)' }}>
+            {findingCount} finding{findingCount !== 1 ? 's' : ''}
+          </div>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.7em', color: 'var(--text-muted)' }}>
           {p?.status === 'running' && (
             <>
@@ -171,7 +201,10 @@ function AsinCard({ asin, plan, asinProgress, liveFiles, thumbUrl, onSelect, ana
               {(hasCaptureData || (plan?.images || []).length > 0) && (
                 <CheckCircle size={10} style={{ color: 'var(--accent)', flexShrink: 0 }} />
               )}
-              <span>{formatMeta(plan, asinProgress, asin, liveFiles) || (hasCaptureData ? '' : 'Queued')}</span>
+              {analyzing && liveGapCount > 0
+                ? <span style={{ color: '#e0a040' }}>{liveGapCount} finding{liveGapCount !== 1 ? 's' : ''} so far</span>
+                : <span>{formatMeta(plan, asinProgress, asin, liveFiles) || (hasCaptureData ? '' : 'Queued')}</span>
+              }
             </>
           )}
         </div>
@@ -196,6 +229,9 @@ export default function GapResultView({
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedAsins, setSelectedAsins] = useState(new Set())
   const [analyzingAsins, setAnalyzingAsins] = useState(new Set())
+  const [asinStatus, setAsinStatus] = useState({})          // live step message per asin
+  const [asinGapCounts, setAsinGapCounts] = useState({})    // live gap count per asin during analysis
+  const [asinFindingCounts, setAsinFindingCounts] = useState({}) // final count per asin after done
   const abortRefs = useRef({})
 
   const allItems = useMemo(() => buildAllItems(plans, liveFiles), [plans, liveFiles])
@@ -294,13 +330,30 @@ export default function GapResultView({
         body: JSON.stringify({ asin, engagementId }),
         signal: controller.signal,
       }).then(async res => {
-        // Drain the SSE stream
         const reader = res.body?.getReader()
         if (!reader) return
         const dec = new TextDecoder()
+        let buf = ''
         while (true) {
-          const { done } = await reader.read()
+          const { done, value } = await reader.read()
           if (done) break
+          buf += dec.decode(value, { stream: true })
+          const parts = buf.split('\n\n')
+          buf = parts.pop()
+          for (const part of parts) {
+            const dataLine = part.match(/^data: (.+)/m)
+            if (!dataLine) continue
+            try {
+              const obj = JSON.parse(dataLine[1])
+              if (obj.type === 'llm_progress' && obj.msg) {
+                setAsinStatus(prev => ({ ...prev, [asin]: obj.msg }))
+              } else if (obj.type === 'llm_gap') {
+                setAsinGapCounts(prev => ({ ...prev, [asin]: (prev[asin] || 0) + 1 }))
+              } else if (obj.type === 'llm_complete') {
+                setAsinFindingCounts(prev => ({ ...prev, [asin]: obj.count ?? asinGapCounts[asin] ?? 0 }))
+              }
+            } catch { /* malformed line */ }
+          }
         }
       }).catch(() => {/* aborted or network error */}).finally(() => {
         setAnalyzingAsins(prev => {
@@ -308,6 +361,7 @@ export default function GapResultView({
           next.delete(asin)
           return next
         })
+        setAsinStatus(prev => { const n = { ...prev }; delete n[asin]; return n })
         setAnalyzedAsins(prev => new Set([...prev, asin]))
         if (onAnalyzeAsin) onAnalyzeAsin(asin)
         delete abortRefs.current[asin]
@@ -346,6 +400,9 @@ export default function GapResultView({
         selected={selectedAsins.has(asin)}
         onToggle={toggleAsinSelection}
         analyzing={analyzingAsins.has(asin)}
+        statusMsg={asinStatus[asin]}
+        liveGapCount={asinGapCounts[asin] || 0}
+        findingCount={asinFindingCounts[asin]}
       />
     )
   }
