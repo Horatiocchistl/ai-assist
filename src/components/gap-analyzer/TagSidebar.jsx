@@ -1,16 +1,19 @@
 import React, { useState } from 'react'
 import { X, Tag as TagIcon } from 'lucide-react'
 
-export default function TagSidebar({ 
-  open, 
-  onClose, 
-  imageType,      // 'live' | 'planned'
-  imageIndex,     // null for hero, number for carousel/aplus
-  existingTags,   // tags for this specific image
-  allTags,        // all unique tags in section
+export default function TagSidebar({
+  open,
+  onClose,
+  imageType,
+  imageIndex,
+  existingTags,
+  allTags,
   onAddTag,
   onRemoveTag,
-  isLinkedTag     // function to check if tag is linked
+  isLinkedTag,
+  note = '',
+  onNoteChange,
+  onSaveNote,
 }) {
   const [newTag, setNewTag] = useState('')
 
@@ -213,9 +216,51 @@ export default function TagSidebar({
           )}
         </div>
 
+        {/* Image notes */}
+        <div style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
+          <label style={{ fontSize: '0.75em', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>
+            Notes
+          </label>
+          <textarea
+            value={note}
+            onChange={onNoteChange}
+            placeholder="Add notes about this image…"
+            style={{
+              width: '100%',
+              minHeight: 120,
+              padding: '0.5rem',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              background: 'var(--bg-panel)',
+              color: 'var(--text-primary)',
+              fontSize: '0.8em',
+              fontFamily: 'inherit',
+              resize: 'vertical',
+              boxSizing: 'border-box',
+            }}
+          />
+          <button
+            type="button"
+            onClick={onSaveNote}
+            style={{
+              marginTop: '0.5rem',
+              padding: '0.4rem 0.9rem',
+              border: 'none',
+              borderRadius: 6,
+              background: 'var(--accent)',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: '0.8em',
+              fontWeight: 600,
+            }}
+          >
+            Save
+          </button>
+        </div>
+
         {/* Legend */}
-        <div style={{ 
-          marginTop: '2rem',
+        <div style={{
+          marginTop: '0.5rem',
           padding: '0.75rem',
           background: 'var(--bg-panel)',
           borderRadius: 4,

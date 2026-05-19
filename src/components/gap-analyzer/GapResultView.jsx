@@ -34,6 +34,20 @@ function isAnalyzed(asinProgress, asin, liveFiles) {
   return false
 }
 
+function buildAllItems(plans, liveFiles) {
+  const byAsin = new Map()
+  for (const p of plans || []) {
+    if (p?.asin) byAsin.set(p.asin, { asin: p.asin, plan: p })
+  }
+  for (const entry of liveFiles || []) {
+    if (!entry?.asin) continue
+    if (!byAsin.has(entry.asin)) {
+      byAsin.set(entry.asin, { asin: entry.asin, plan: null })
+    }
+  }
+  return Array.from(byAsin.values())
+}
+
 function formatMeta(plan, asinProgress, asin, liveFiles) {
   const p = progressForAsin(asinProgress, asin, liveFiles)
   if (p?.status === 'complete' || p?.status === 'captured') {
@@ -148,7 +162,7 @@ export default function GapResultView({
   const [search, setSearch] = useState('')
   const [thumbUrls, setThumbUrls] = useState({})
 
-  const allItems = useMemo(() => plans.map(p => ({ asin: p.asin, plan: p })), [plans])
+  const allItems = useMemo(() => buildAllItems(plans, liveFiles), [plans, liveFiles])
 
   const searchLower = search.trim().toLowerCase()
 
@@ -310,12 +324,12 @@ export default function GapResultView({
         overflowY: 'auto',
         padding: '1rem',
       }}>
-        {filteredItems.length === 0 && plans.length === 0 && (
+        {filteredItems.length === 0 && allItems.length === 0 && (
           <div style={{ color: 'var(--text-muted)', fontSize: '0.8em', textAlign: 'center', paddingTop: '2rem' }}>
             No results yet
           </div>
         )}
-        {filteredItems.length === 0 && plans.length > 0 && (
+        {filteredItems.length === 0 && allItems.length > 0 && (
           <div style={{ color: 'var(--text-muted)', fontSize: '0.8em', textAlign: 'center', paddingTop: '2rem' }}>
             No matching ASINs
           </div>

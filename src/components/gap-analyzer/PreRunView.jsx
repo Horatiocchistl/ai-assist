@@ -7,7 +7,7 @@ import FolderImportUrlModal from './FolderImportUrlModal.jsx'
 import { extractAsin } from '../../lib/extractAsin.js'
 import {
   loadActiveEngagement,
-  loadPlans,
+  loadAllPlans,
   createPlan,
   uploadImage,
   importFolderPayload,
@@ -55,7 +55,7 @@ export default function PreRunView({ onPlansChange }) {
   const refresh = useCallback(async () => {
     const eng = await loadActiveEngagement()
     setEngagement(eng)
-    const data = eng ? await loadPlans(eng.id) : []
+    const data = await loadAllPlans()
     setPlans(data)
     onPlansChange?.(data, eng)
   }, [onPlansChange])

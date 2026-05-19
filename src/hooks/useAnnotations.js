@@ -1,14 +1,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import supabase from '../lib/supabase.js'
 
+/** Composite key stored in asin_annotations.section (e.g. carousel_01|planned|3). */
+export function imageAnnotationKey(section, imageType, imageIndex) {
+  const idx = imageIndex == null ? '' : String(imageIndex)
+  return `${section}|${imageType}|${idx}`
+}
+
 /**
- * Hook for loading and saving human annotations for ASIN comparison view
+ * Hook for loading and saving per-image notes in comparison view.
  * @param {string} runId - The run ID
  * @param {string} asin - The ASIN
  * @returns {{annotations: Object, saveAnnotation: Function, loading: boolean}}
  */
 export function useAnnotations(runId, asin) {
-  const [annotations, setAnnotations] = useState({}) // section -> { note }
+  const [annotations, setAnnotations] = useState({}) // annotationKey -> { note }
   const [loading, setLoading] = useState(true)
 
   // Load annotations for this run + ASIN on mount
@@ -31,7 +37,7 @@ export function useAnnotations(runId, asin) {
         return
       }
 
-      // Convert array to object keyed by section
+      // Keyed by annotation key (stored in section column)
       const annotationsMap = {}
       for (const row of data || []) {
         annotationsMap[row.section] = {
@@ -48,8 +54,8 @@ export function useAnnotations(runId, asin) {
 
   // Upsert annotation
   const saveAnnotation = useCallback(
-    async (section, note) => {
-      if (!runId || !asin || !section) return
+    async (annotationKey, note) => {
+      if (!runId || !asin || !annotationKey) return
 
       const { error } = await supabase
         .from('asin_annotations')
@@ -57,7 +63,7 @@ export function useAnnotations(runId, asin) {
           {
             run_id: runId,
             asin,
-            section,
+            section: annotationKey,
             note,
             updated_at: new Date().toISOString(),
           },
@@ -69,10 +75,9 @@ export function useAnnotations(runId, asin) {
         return
       }
 
-      // Update local state
       setAnnotations((prev) => ({
         ...prev,
-        [section]: { note },
+        [annotationKey]: { note },
       }))
     },
     [runId, asin]

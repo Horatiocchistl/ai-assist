@@ -10,11 +10,13 @@ import LlmAnalysisView from './LlmAnalysisView.jsx'
 import {
   saveGapSession,
   resolveLatestSession,
+  bootstrapLiveCaptures,
+  progressFromLiveFiles,
   buildAsinsDataFromProgress,
 } from '../../hooks/useGapSessions.js'
 import {
   loadActiveEngagement,
-  loadPlans,
+  loadAllPlans,
   plansToRunAsins,
   isPlanReady,
 } from '../../hooks/usePlannedEngagement.js'
@@ -74,6 +76,17 @@ function manifestToSession(manifest) {
       aplusCount: a.aplusCount ?? 0,
     })),
   }
+}
+
+function mergeRunAsins(plans, liveFiles) {
+  const map = new Map(plansToRunAsins(plans).map(a => [a.asin, a]))
+  for (const entry of liveFiles || []) {
+    if (entry.asin && !map.has(entry.asin)) {
+      const plan = plans.find(p => p.asin === entry.asin)
+      map.set(entry.asin, { asin: entry.asin, url: plan?.url || '' })
+    }
+  }
+  return Array.from(map.values())
 }
 
 export default function GapAnalyzerView() {
@@ -137,12 +150,12 @@ export default function GapAnalyzerView() {
     }
   }, [])
 
-  // Load plans + restore most recent completed run
+  // Load plans + restore most recent completed run or live-captures from storage
   useEffect(() => {
     async function init() {
       const eng = await loadActiveEngagement()
       setEngagement(eng)
-      const loadedPlans = eng ? await loadPlans(eng.id) : []
+      const loadedPlans = await loadAllPlans()
       setPlans(loadedPlans)
 
       const session = await resolveLatestSession()
@@ -160,8 +173,17 @@ export default function GapAnalyzerView() {
         })
       } else {
         hasRestoredRunRef.current = false
-        setAsins(plansToRunAsins(loadedPlans))
-        if (loadedPlans.length === 0) setActiveTab('prerun')
+        const { runId: storageRunId, liveFiles: storageLive } = await bootstrapLiveCaptures()
+        if (storageLive.length) {
+          liveFilesRef.current = storageLive
+          setLiveFiles(storageLive)
+          activeRunIdRef.current = storageRunId
+          setRunId(storageRunId)
+          setAsinProgress(progressFromLiveFiles(storageLive))
+          setAsins(mergeRunAsins(loadedPlans, storageLive))
+        } else {
+          setAsins(plansToRunAsins(loadedPlans))
+        }
       }
     }
     init()
@@ -350,7 +372,7 @@ export default function GapAnalyzerView() {
         </div>
 
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <RunPlanSidebar plans={plans} progress={asinProgress} />
+          <RunPlanSidebar plans={plans} liveFiles={liveFiles} progress={asinProgress} />
         </div>
 
         {/* Run / Stop controls */}
@@ -371,7 +393,7 @@ export default function GapAnalyzerView() {
               }}
             >
               <Play size={13} />
-              Run Analysis
+              Run
             </button>
           ) : null}
           {runStatus !== 'running' && !runnableCount && (
@@ -419,20 +441,17 @@ export default function GapAnalyzerView() {
             { id: 'results', label: 'Results' },
           ].map(({ id: tab, label }) => {
             const isActive = activeTab === tab
-            const isDisabled =
-              (tab === 'run' && !plans.length) ||
-              (tab === 'results' && runStatus !== 'complete' && runStatus !== 'stopped')
             return (
               <button
                 key={tab}
-                onClick={() => { if (!isDisabled) { setActiveTab(tab); if (tab !== 'results') setDetailAsin(null) } }}
+                onClick={() => { setActiveTab(tab); if (tab !== 'results') setDetailAsin(null) }}
                 style={{
                   padding: '0.5rem 0.9rem',
                   border: 'none',
                   borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
                   background: 'transparent',
-                  color: isDisabled ? 'var(--text-muted)' : isActive ? 'var(--accent)' : 'var(--text-secondary)',
-                  cursor: isDisabled ? 'default' : 'pointer',
+                  color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
                   fontSize: '0.8em',
                   fontWeight: isActive ? 600 : 400,
                   marginBottom: -1,

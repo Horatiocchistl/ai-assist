@@ -67,6 +67,48 @@ async function fetchLiveFilesFromStorage(runId) {
   return liveFiles
 }
 
+/** Newest run folder name under live-captures (when gap_sessions has no row). */
+export async function resolveLatestLiveCapturesRunId() {
+  const { data, error } = await supabase.storage.from(LIVE_BUCKET).list('', { limit: 200 })
+  if (error) {
+    console.error('[gap_sessions] live-captures root list:', error.message)
+    return null
+  }
+  const runs = (data || [])
+    .filter(e => e.id == null && e.name)
+    .map(e => e.name)
+  if (!runs.length) return null
+  runs.sort()
+  return runs[runs.length - 1]
+}
+
+/** Load live capture files from storage without a gap_sessions row. */
+export async function bootstrapLiveCaptures() {
+  const runId = await resolveLatestLiveCapturesRunId()
+  if (!runId) return { runId: null, liveFiles: [] }
+  const liveFiles = await fetchLiveFilesFromStorage(runId)
+  return { runId, liveFiles }
+}
+
+/** Build asinProgress map from live-captures file names. */
+export function progressFromLiveFiles(liveFiles) {
+  const progress = {}
+  for (const entry of liveFiles || []) {
+    if (!entry?.asin) continue
+    let carouselCount = 0
+    let aplusCount = 0
+    for (const f of entry.files || []) {
+      const name = f.filename || ''
+      if (/^carousel_\d+/i.test(name)) carouselCount++
+      else if (/^aplus_\d+/i.test(name)) aplusCount++
+    }
+    if ((entry.files || []).length) {
+      progress[entry.asin] = { status: 'complete', carouselCount, aplusCount }
+    }
+  }
+  return progress
+}
+
 /** Restore latest run from Supabase only (not local disk). */
 export async function resolveLatestSession() {
   const picked = await loadLatestGapSession()

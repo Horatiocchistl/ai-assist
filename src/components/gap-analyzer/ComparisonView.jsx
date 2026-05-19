@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { ArrowLeft } from 'lucide-react'
-import { MentionsInput, Mention } from 'react-mentions'
-import { useAnnotations } from '../../hooks/useAnnotations.js'
+import { useAnnotations, imageAnnotationKey } from '../../hooks/useAnnotations.js'
 import { useImageTags } from '../../hooks/useImageTags.js'
 import { getSignedUrl, sortPlanImages } from '../../hooks/usePlannedEngagement.js'
 import { getLiveSignedUrl } from '../../hooks/usePlannedEngagement.js'
@@ -226,7 +225,6 @@ export default function ComparisonView({ runId, asin, liveFiles, plan, onBack })
   
   // Tag management
   const [tagSidebar, setTagSidebar] = useState({ open: false, imageType: null, imageIndex: null })
-  const [notesExpanded, setNotesExpanded] = useState(false)
   const { tags, addTag, removeTag, getImageTags, isLinkedTag, allUniqueTags } = useImageTags(runId, asin, activeSection)
   
   const sections = useMemo(() => {
@@ -241,13 +239,12 @@ export default function ComparisonView({ runId, asin, liveFiles, plan, onBack })
     }
   }, [sections, activeSection])
 
-  // Sync localNote with annotations when section changes
+  // Sync localNote when sidebar image target changes
   useEffect(() => {
-    if (activeSection) {
-      const currentAnnotation = annotations[activeSection]
-      setLocalNote(currentAnnotation?.note || '')
-    }
-  }, [activeSection, annotations])
+    if (!tagSidebar.open || !activeSection || tagSidebar.imageType == null) return
+    const key = imageAnnotationKey(activeSection, tagSidebar.imageType, tagSidebar.imageIndex)
+    setLocalNote(annotations[key]?.note || '')
+  }, [tagSidebar.open, tagSidebar.imageType, tagSidebar.imageIndex, activeSection, annotations])
 
   // Load images for active section
   useEffect(() => {
@@ -304,21 +301,14 @@ export default function ComparisonView({ runId, asin, liveFiles, plan, onBack })
     loadImages()
   }, [activeSection, sections, plan, liveFiles, asin])
 
-  const currentAnnotation = annotations[activeSection] || { note: '' }
-
-  // Prepare tags for mentions
-  const mentionTags = useMemo(() => {
-    const uniqueTags = allUniqueTags()
-    return uniqueTags.map(tag => ({ id: tag, display: tag }))
-  }, [allUniqueTags])
-
-  const handleNoteChange = (e, newValue) => {
-    // MentionsInput passes (event, newValue, newPlainTextValue, mentions)
-    setLocalNote(newValue)
+  const handleNoteChange = (e) => {
+    setLocalNote(e.target.value)
   }
 
   const handleSaveNote = () => {
-    saveAnnotation(activeSection, localNote)
+    if (!activeSection || tagSidebar.imageType == null) return
+    const key = imageAnnotationKey(activeSection, tagSidebar.imageType, tagSidebar.imageIndex)
+    saveAnnotation(key, localNote)
   }
 
   const handleTagClick = (imageType, imageIndex) => {
@@ -457,7 +447,7 @@ export default function ComparisonView({ runId, asin, liveFiles, plan, onBack })
                 style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
               />
             ) : (
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.8em' }}>No live capture</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.8em' }}>Loading...</span>
             )}
           </div>
         </div>
@@ -499,224 +489,12 @@ export default function ComparisonView({ runId, asin, liveFiles, plan, onBack })
                 />
               ))
             ) : (
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.8em', textAlign: 'center' }}>No planned images</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.8em', textAlign: 'center' }}>Loading...</span>
             )}
           </div>
         </div>
       </div>
 
-      {/* Annotation panel */}
-      <div style={{
-        flexShrink: 0,
-        padding: '1rem',
-        borderTop: '1px solid var(--border)',
-        background: 'var(--bg-secondary)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.75rem',
-        position: 'relative'
-      }}>
-        {/* Expanded overlay */}
-        {notesExpanded && (
-          <div style={{
-            position: 'absolute',
-            bottom: '100%',
-            left: 0,
-            right: 0,
-            background: 'var(--bg-secondary)',
-            borderTop: '1px solid var(--border)',
-            padding: '1rem',
-            maxHeight: '50vh',
-            overflowY: 'auto',
-            boxShadow: '0 -4px 12px rgba(0,0,0,0.1)',
-            zIndex: 10
-          }}>
-            <div style={{ marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.75em', fontWeight: 600, color: 'var(--text-muted)' }}>
-                Expanded Notes
-              </span>
-              <button 
-                onClick={() => setNotesExpanded(false)}
-                style={{
-                  padding: '0.25rem 0.5rem',
-                  border: '1px solid var(--border)',
-                  borderRadius: 4,
-                  background: 'var(--bg-panel)',
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer',
-                  fontSize: '0.75em'
-                }}
-              >
-                Collapse ↓
-              </button>
-            </div>
-            <MentionsInput
-              value={localNote}
-              onChange={handleNoteChange}
-              placeholder="Add notes about this section... Use @tagname to reference tags."
-              style={{
-                control: {
-                  width: '100%',
-                  minHeight: 250,
-                  fontSize: '0.8em',
-                  fontFamily: 'inherit',
-                },
-                input: {
-                  padding: '0.5rem',
-                  border: '1px solid var(--border)',
-                  borderRadius: 6,
-                  background: 'var(--bg-panel)',
-                  color: 'var(--text-primary)',
-                  minHeight: 250,
-                  overflow: 'auto',
-                },
-                highlighter: {
-                  padding: '0.5rem',
-                  border: '1px solid transparent',
-                  minHeight: 250,
-                  overflow: 'hidden',
-                },
-                suggestions: {
-                  list: {
-                    background: 'var(--bg-panel)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    fontSize: '0.8em',
-                  },
-                  item: {
-                    padding: '0.35rem 0.5rem',
-                    '&focused': {
-                      background: 'var(--accent)',
-                      color: '#fff',
-                    },
-                  },
-                },
-              }}
-            >
-              <Mention
-                trigger="@"
-                data={mentionTags}
-                displayTransform={(id) => `@${id}`}
-                markup="@__id__"
-                style={{
-                  backgroundColor: '#e3f2fd',
-                  borderRadius: 3,
-                  padding: '0 2px',
-                }}
-              />
-            </MentionsInput>
-            <button
-              onClick={handleSaveNote}
-              style={{
-                marginTop: '0.5rem',
-                padding: '0.4rem 0.9rem',
-                border: 'none',
-                borderRadius: 6,
-                background: 'var(--accent)',
-                color: '#fff',
-                cursor: 'pointer',
-                fontSize: '0.8em',
-                fontWeight: 600,
-              }}
-            >
-              Save
-            </button>
-          </div>
-        )}
-
-        {/* Collapsed state */}
-        {!notesExpanded && (
-          <>
-            <MentionsInput
-              value={localNote}
-              onChange={handleNoteChange}
-              placeholder="Add notes about this section... Use @tagname to reference tags."
-              style={{
-                control: {
-                  width: '100%',
-                  minHeight: 60,
-                  fontSize: '0.8em',
-                  fontFamily: 'inherit',
-                },
-                input: {
-                  padding: '0.5rem',
-                  border: '1px solid var(--border)',
-                  borderRadius: 6,
-                  background: 'var(--bg-panel)',
-                  color: 'var(--text-primary)',
-                  minHeight: 60,
-                  overflow: 'auto',
-                },
-                highlighter: {
-                  padding: '0.5rem',
-                  border: '1px solid transparent',
-                  minHeight: 60,
-                  overflow: 'hidden',
-                },
-                suggestions: {
-                  list: {
-                    background: 'var(--bg-panel)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    fontSize: '0.8em',
-                  },
-                  item: {
-                    padding: '0.35rem 0.5rem',
-                    '&focused': {
-                      background: 'var(--accent)',
-                      color: '#fff',
-                    },
-                  },
-                },
-              }}
-            >
-              <Mention
-                trigger="@"
-                data={mentionTags}
-                displayTransform={(id) => `@${id}`}
-                markup="@__id__"
-                style={{
-                  backgroundColor: '#e3f2fd',
-                  borderRadius: 3,
-                  padding: '0 2px',
-                }}
-              />
-            </MentionsInput>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                onClick={handleSaveNote}
-                style={{
-                  padding: '0.4rem 0.9rem',
-                  border: 'none',
-                  borderRadius: 6,
-                  background: 'var(--accent)',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  fontSize: '0.8em',
-                  fontWeight: 600,
-                }}
-              >
-                Save
-              </button>
-              <button 
-                onClick={() => setNotesExpanded(true)}
-                style={{
-                  padding: '0.35rem 0.75rem',
-                  border: '1px solid var(--border)',
-                  borderRadius: 6,
-                  background: 'var(--bg-panel)',
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer',
-                  fontSize: '0.75em',
-                  fontWeight: 500,
-                }}
-              >
-                Expand Notes ↑
-              </button>
-            </div>
-          </>
-        )}
-      </div>
 
       {/* Tag Sidebar */}
       <TagSidebar
@@ -729,6 +507,9 @@ export default function ComparisonView({ runId, asin, liveFiles, plan, onBack })
         onAddTag={handleAddTag}
         onRemoveTag={handleRemoveTag}
         isLinkedTag={isLinkedTag}
+        note={localNote}
+        onNoteChange={handleNoteChange}
+        onSaveNote={handleSaveNote}
       />
     </div>
   )

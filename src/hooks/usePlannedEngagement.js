@@ -69,6 +69,19 @@ export async function loadPlans(engagementId) {
   return data || []
 }
 
+/** All plans across engagements — for display lists (not filtered by active engagement). */
+export async function loadAllPlans() {
+  const { data, error } = await supabase
+    .from('asin_plans')
+    .select('*')
+    .order('sort_order', { ascending: true })
+  if (error) {
+    console.error('[asin_plans] loadAll error:', error.message)
+    return []
+  }
+  return data || []
+}
+
 export async function importFolderPayload(payload, opts) {
   const result = await importPlannedToSupabase(payload, opts)
   if (result.ok && result.engagement) {

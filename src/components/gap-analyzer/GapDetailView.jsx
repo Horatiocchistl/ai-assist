@@ -146,7 +146,7 @@ function ScreenshotPanel({ imageUrls, onLightbox }) {
 
       {filenames.length === 0 && (
         <div style={{ color: 'var(--text-muted)', fontSize: '0.8em', paddingTop: '2rem', textAlign: 'center' }}>
-          No screenshots in Supabase for this ASIN.
+          Loading...
         </div>
       )}
     </div>
@@ -171,7 +171,7 @@ function ProductDataPanel({ data, onLightbox }) {
   if (!data) {
     return (
       <div style={{ padding: '2rem 1rem', color: 'var(--text-muted)', fontSize: '0.8em', textAlign: 'center' }}>
-        No structured data — Apify token not set or fetch failed.
+        Loading...
       </div>
     )
   }
